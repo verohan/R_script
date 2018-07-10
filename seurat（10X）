@@ -3,10 +3,22 @@ setwd()
 options(stringsAsFactors = F)
 rm（list = ls(()）
 
+##library
 library(Seurat)
 library(scater)
 library(RColorBrewer)
 library(readxl)
+
+##colors
+pal_rainbow <- c("red","orange","yellow","green","cyan","blue","purple")
+bertie.color <- c("#D0B38A", "#A3D171", "#533E88", "#7957A3", "#000000", "#E63325", "#0A8041", "#C5208E", "#3CBDED", "#3B55A3", "#D691BE", "#D23E28", "#6474B6", "#4288C8", "#80A469", "#FFCF3F", "#FBCC9F", "#F06360", "#437BB2", "#A43E40", "#206767", "#779E43", "#258950", "#F7D059", "#ED803B") 
+pal_dolphin <- c("#FF00AE", "#A020F1", "#000000", "#0403E5", "#FF8C01", "#8B0101", "#007502", "#FE0000", "#FFFF01", "#FF99CB", "#4A95FB", "#61FE69", "#9A7A01", "#017F8B", "#05FDFF", "grey")
+pal_cluster <- c("#FF00AE", "#A020F1", "#000000", "#0403E5", "#FF8C01", 
+                 "#8B0101", "#007502", "#FE0000", "#FFFF01", "#FF99CB", 
+                 "#4A95FB", "#61FE69", "#9A7A01", "#017F8B", "#05FDFF",
+                 "#D0B38A", "#533E88", "#D23E28", "#80A469", "#F06360")
+pal_location <- brewer.pal(12, name = "Paired")
+pal_stage <- c("indianred", "steelblue", "blue3")
 
 #引入细胞周期 marker（g1$s,g2$m）
 cell_cycle <- as.data.frame(read_excel("~/Rstudio/cell cycle/cell cycle list.xlsx",
