@@ -174,18 +174,19 @@ write.csv(pbmc@dr$tsne@cell.embeddings,file = "")
 save(pbmc,file = "~")
 
 # Findmarkers
- res0.6_markers <- FindAllMarkers(object = pbmc, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 1)
- cluster10.markers <- FindMarkers(object = pbmc, ident.1 = , ident.2 = c(2,1,4,6,9), 
+res0.6_markers <- FindAllMarkers(object = pbmc, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 1)
+cluster10.markers <- FindMarkers(object = pbmc, ident.1 = , ident.2 = c(2,1,4,6,9), 
                                  min.pct = 0.25, logfc.threshold = 1, only.pos = TRUE)
- write.csv(res0.6_markers, file = ".csv")
- write.csv(cluster10.markers,file = ".csv")
+write.csv(res0.6_markers, file = ".csv")
+write.csv(cluster10.markers,file = ".csv")
 
 #vinplot
- VlnPlot(object = pbmc, features.plot = c(""))
+VlnPlot(object = pbmc, features.plot = c(""))
  
- #featureplot
- FeaturePlot(pbmc, features.plot = c(''),  pt.size = 1, cols.use = c("grey", "red"), 
+#featureplot
+FeaturePlot(pbmc, features.plot = c(''),  pt.size = 1, cols.use = c("grey", "red"), 
              reduction.use = "tsne", nCol = NULL, do.return = FALSE)
+FeatureHeatmap(pbmc,features.plot = c(""),group.by = "", pt.size = 1, key.position = "top")#cca展示不同批次需要 
  
  #展示 cluster
  for(i in 0:~){
@@ -196,6 +197,16 @@ save(pbmc,file = "~")
    print(TSNEPlot(pbmc, do.return=T)+scale_color_manual(values = c("red","grey")))
    dev.off()
  }
+ 
+ #确定群体名字，if needed
+pbmc <- SetAllIdent(pbmc, id = "")#已设置 ident 不需要
+current.cluster.ids <- c(0, 1, 2, 3, 4, 5, 6, 7)
+new.cluster.ids <- c("")
+pbmc@ident <- plyr::mapvalues(x = pbmc@ident, from = current.cluster.ids, to = new.cluster.ids)
+TSNEPlot(object = pbmc, do.label = TRUE, pt.size = ...)
+
+ 
+ 
 
 
 
