@@ -1,0 +1,159 @@
+rm（list = ls(()）
+setwd()
+
+library(Seurat)
+library(scater)
+
+#引入细胞周期 marker（g1$s,g2$m）
+library(readxl)
+cell_cycle <- as.data.frame(read_excel("~/Rstudio/cell cycle/cell cycle list.xlsx",
+                                       sheet = 1))
+
+#segregate this list into markers of G1/S phase, G2/M phase and markers of S phase
+g1s.genes <- as.character(na.omit(cell_cycle$G1/S))
+g2m.genes <- as.character(na.omit(cell_cycle$G2/M))
+
+#更改大小写(human不用此步)
+ g1s.genes <- tolower(g1s.genes)
+g2m.genes <- tolower(g2m.genes)
+
+#首字母大写(human不用此步)
+library(Hmisc)
+g1s.genes <- capitalize(g1s.genes)
+g2m.genes <- capitalize(g2m.genes)
+
+#读入10X/mm10
+data <- Read10X(data.dir="~/Rstudio/...")
+ncol(as.matrix(data))
+
+pbmc <- CreateSeuratObject(raw.data = data,min.cells = 3,min.genes = 200)#()
+
+plot(pbmc@meta.data$nUMI, pbmc@meta.data$nGene, 
+     xlab = "nUMI - the number of transcripts", 
+     ylab = "nGene - the number of genes")
+
+# evaluate threshold for percent.mito
+mito.genes <- grep(pattern = "^MT-", x = rownames(x = pbmc@data), 
+                   value = TRUE)
+percent.mito <- Matrix::colSums(pbmc@raw.data[mito.genes, ]) / 
+  Matrix::colSums(pbmc@raw.data)
+pbmc <- AddMetaData(object = pbmc, metadata = percent.mito, 
+                    col.name = "percent.mito")
+VlnPlot(object = pbmc, 
+        features.plot = c("nGene", "nUMI", "percent.mito"), 
+        nCol = 3)
+
+#ggplot(nGene_nUMI, aes(x=nUMI, y=nGene)) + geom_point() + geom_density_2d()
+
+# filter cells
+pbmc <- FilterCells(object = pbmc, 
+                    subset.names = c("nGene",'nUMI', "percent.mito"), 
+                    low.thresholds = c(1000, 4000,-Inf), 
+                    high.thresholds = c(40000, 60000,0.1))
+ncol(pbmc@data)
+
+#
+#filt_cells <- as.matrix(pbmc@data)
+#write.csv(filt_cells, file = "~/Rstudio/....")
+
+pbmc <- NormalizeData(object = pbmc, normalization.method = "LogNormalize", 
+                      scale.factor = 10000)
+#(对于 scale.factor 的选择：应选择最接近其 nUMI 中位数的数量级)
+#seurat中Normolization（值为 log（2）与手动取 log，是不一样的，手动取 log 可能会在后续寻找 df markers 中其 logFC 值可能会被放大；）
+
+#Detection of variable genes across the single cells
+pbmc <- FindVariableGenes(object = pbmc , mean.function = ExpMean , dispersion.function = LogVMR, 
+                          x.low.cutoff = 0.0125, x.high.cutoff = 3, y.cutoff = 0.5)
+length(x = pbmc@var.genes)
+
+#Scaling the data and removing unwanted sources of variation
+pbmc <- ScaleData(object=pbmc）#vars.to.regress = c("nUMI" , "percent.mito")#(vars.to.regress,对 UMI 范围不是特别大，不用执行回归)
+
+#Perform linear dimensional reduction
+pbmc <- RunPCA(pbmc, pc.genes = pbmc@var.genes, pcs.compute = 50, do.print = TRUE, 
+               pcs.print = 1:10, genes.print = 20)  #（需查看主成分中是否有细胞周期相关基因）
+#Assign Cell-Cycle Scores
+pbmc <- CellCycleScoring(object = pbmc,  s.genes = g1s.genes, 
+                         g2m.genes = g2m.genes, set.ident = TRUE)
+head(x = pbmc@meta.data)
+
+#Running a PCA on cell cycle genes reveals, unsurprisingly, that cells separate entirely by phase
+pbmc <- RunPCA(object = pbmc, pc.genes = c(g1s.genes, g2m.genes), do.print = FALSE)
+VizPCA(object = pbmc, pcs.use = 1:2)
+PCAPlot(pbmc, dim.1 = 1, dim.2 = 2)#(主成分展示)
+
+#Regress out cell cycle scores during data scaling，if needed;
+pbmc <- ScaleData(object = pbmc, vars.to.regress = c("S.Score", "G2M.Score"), display.progress = FALSE)
+
+pbmc <- RunPCA(object = pbmc, pc.genes = pbmc@var.genes, pcs.compute = 50, do.print = TRUE, pcs.print = 1:5, genes.print = 30)
+
+pbmc <- RunPCA(object = pbmc, pc.genes = c(s.genes, g2m.genes), do.print = FALSE)
+
+VizPCA(object = pbmc, pcs.use = 1:2)
+PCAPlot(pbmc, dim.1 = 1, dim.2 = 2)
+
+
+#Perform linear dimensional reduction
+pbmc <- RunPCA(pbmc, pc.genes = pbmc@var.genes, pcs.compute = 30 ,do.print = TRUE, pcs.print = 1:10, genes.print = 20) 
+
+
+# Visualize the distribution of cell cycle markers across
+RidgePlot(object = pbmc, features.plot = c("Pcna", "Top2a", "Mcm6", "Mki67"), 
+          nCol = 2)
+
+#Determine statistically significant principal components
+pbmc <- JackStraw(object = pbmc, num.replicate = 100, display.progress = FALSE)
+JackStrawPlot(object = pbmc, PCs = 1:50)
+
+PCElbowPlot(object = pbmc, num.pc = 50)
+
+#save PCA
+pbmc <- ProjectPCA(pbmc,do.print = FALSE)
+
+
+#Cluster the cells 
+pbmc <- FindClusters(object = pbmc, reduction.type = "pca", dims.use = 1:20, 
+                     resolution = seq(0.2,2,0.2), print.output = 0, save.SNN = TRUE)
+
+pbmc_copy <- pbmc
+
+meta_data <- as.matrix(pbmc@meta.data)
+write.csv(meta_data,file = "~/Rstudio/.../anno.csv")
+
+#设置离散度（perplexity）,选择较好的呈现图，设置resolution = 0.2,0.4,0.6,0.8,1.0,1.2
+
+for(i in seq(50,150,10)){
+  pbmc <- SetAllIdent(pbmc, id = "res.0.6")
+  pbmc<- RunTSNE(object = pbmc, do.fast = TRUE, dims.use = 1:30, perplexity = i)
+  pdf(file = paste("~/Rstudio/.../perplexity/per",i,".pdf",sep = ""), 
+      width = 9.81,height = 6.94,onefile = F)
+  print(TSNEPlot(object = pbmc, do.label = TRUE, do.return=T) + labs(title=i))
+  dev.off()
+}
+
+#Resolution=0.2, 0.4, 0.6, 0.8, 1.0, 1.2
+for(i in seq(0.2,0.8,0.2)){
+  pbmc <- SetAllIdent(pbmc,id = paste("res.",i,sep = ""))
+  pbmc <- RunTSNE(object = pbmc, do.fast = TRUE, dims.use = 1:30, perplexity = 60)
+  pdf(file = paste("~/Rstudio/.../tsne/res.",i,".pdf",sep = ""), 
+      width = 9.81,height = 6.94)
+  print(TSNEPlot(object = pbmc, do.label = TRUE, do.return = T) + labs(title = i))
+  dev.off()
+}
+
+for(i in seq(1,1.8,0.2)){
+  pbmc <- SetAllIdent(pbmc,id = paste("res.",i,sep = ""))
+  pbmc <- RunTSNE(object = pbmc, do.fast = TRUE, dims.use = 1:30, perplexity = 70)
+  pdf(file = paste("~/Rstudio/.../tsne/res.",i,".pdf",sep = ""), 
+      width = 9.81,height = 6.94)
+  print(TSNEPlot(object = pbmc, do.label = TRUE, do.return = T) + labs(title = i))
+  dev.off()
+}
+
+#确定 resolution
+pbmc<- SetAllIdent(pbmc,id = "res.0.6")
+pbmc <- RunTSNE(object = pbmc, do.fast = TRUE, dims.use = 1:30, perplexity = 60)
+TSNEPlot(object = pbmc, do.label = TRUE, do.return = T) + labs(title = "res.0.6")
+
+#save tsne
+save(pbmc,file = "~/Rstudio/...")
