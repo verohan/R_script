@@ -1,0 +1,400 @@
+未整理
+from zhangmin
+####16
+pbmc_16T.data <- Read10X(data.dir="/data2/zhangmin/10X/171239_20180629/16T/16T/outs/filtered_gene_bc_matrices/hg19")
+colnames(x = pbmc_16T.data) <- paste('16T', colnames(x = pbmc_16T.data), sep = '_')
+pbmc_16T<- CreateSeuratObject(raw.data = pbmc_16T.data, 
+                              min.cells = 10, min.genes = 500, 
+                              project = "16T")
+pbmc_16N.data <- Read10X(data.dir="/data2/zhangmin/10X/171239_20180629/16N/16N/outs/filtered_gene_bc_matrices/hg19")
+colnames(x = pbmc_16N.data) <- paste('16N', colnames(x = pbmc_16N.data), sep = '_')
+pbmc_16N <- CreateSeuratObject(raw.data = pbmc_16N.data, 
+                               min.cells = 10, min.genes = 500, 
+                               project = "16N")
+
+####17
+pbmc_17T.data <- Read10X(data.dir="/data2/zhangmin/10X/171239_20180629/17T/17T/outs/filtered_gene_bc_matrices/hg19")
+colnames(x = pbmc_17T.data) <- paste('17T', colnames(x = pbmc_17T.data), sep = '_')
+pbmc_17T<- CreateSeuratObject(raw.data = pbmc_17T.data, 
+                              min.cells = 10, min.genes = 500, 
+                              project = "17T")
+pbmc_17N.data <- Read10X(data.dir="/data2/zhangmin/10X/171239_20180629/17N/17N/outs/filtered_gene_bc_matrices/hg19")
+colnames(x = pbmc_17N.data) <- paste('17N', colnames(x = pbmc_17N.data), sep = '_')
+pbmc_17N <- CreateSeuratObject(raw.data = pbmc_17N.data, 
+                               min.cells = 10, min.genes = 500, 
+                               project = "17N")
+
+
+####18
+pbmc_18T.data <- Read10X(data.dir="/data2/zhangmin/10X/171239_20180629/18T/18T/outs/filtered_gene_bc_matrices/hg19")
+colnames(x = pbmc_18T.data) <- paste('18T', colnames(x = pbmc_18T.data), sep = '_')
+pbmc_18T<- CreateSeuratObject(raw.data = pbmc_18T.data, 
+                              min.cells = 10, min.genes = 500, 
+                              project = "18T")
+pbmc_18N.data <- Read10X(data.dir="/data2/zhangmin/10X/171239_20180629/18N/18N/outs/filtered_gene_bc_matrices/hg19")
+colnames(x = pbmc_18N.data) <- paste('18N', colnames(x = pbmc_18N.data), sep = '_')
+pbmc_18N <- CreateSeuratObject(raw.data = pbmc_18N.data, 
+                               min.cells = 10, min.genes = 500, 
+                               project = "18N")
+unique(pbmc@meta.data$orig.ident)
+pbmc_vector <- list(pbmc_16N,pbmc_16T,pbmc_17N,pbmc_17T,pbmc_18N,pbmc_18T)
+GenePlot(object = pbmc, gene1 = "nUMI", gene2 = "percent.mito")
+GenePlot(object = pbmc, gene1 = "nUMI", gene2 = "nGene")
+VlnPlot(object = pbmc, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3)
+
+for(i in 1:length(pbmc_vector)){
+  pbmc <- pbmc_vector[[i]]
+  mito.genes <- grep(pattern = "^MT-", x = rownames(x = pbmc@data), value = TRUE)
+  percent.mito <- Matrix::colSums(pbmc@raw.data[mito.genes, ])/Matrix::colSums(pbmc@raw.data)
+  
+  pbmc <- AddMetaData(object = pbmc, metadata = percent.mito, col.name = "percent.mito")
+  pbmc <- NormalizeData(object = pbmc, normalization.method = "LogNormalize", 
+                        scale.factor = 10000)
+  percent.CD <- pmax(pbmc@data["CD3D", ],pbmc@data["CD79A", ])/Matrix::colSums(pbmc@data[c("CD3D","CD79A"), ])
+  percent.CD[is.na(percent.CD)] <- 1
+  percent.CD[(pbmc@data["CD3D", ] < 2) & (pbmc@data["CD79A", ] < 2)] <- 1
+  pbmc <- AddMetaData(object = pbmc, metadata = percent.CD, col.name = "percent.CD")
+  pbmc <- FilterCells(object = pbmc, subset.names = c("nGene", "percent.mito","percent.CD"),
+                      low.thresholds = c(500, -Inf, 0.8), high.thresholds = c(6000, 0.5, Inf))
+  
+  pbmc <- FindVariableGenes(object = pbmc, mean.function = ExpMean, dispersion.function = LogVMR, 
+                            x.low.cutoff = 0.0125, x.high.cutoff = 3, y.cutoff = 0.5, do.plot = F)
+  
+  pbmc <- ScaleData(object = pbmc, vars.to.regress = "nUMI")
+  pbmc@meta.data$group <- pbmc@project.name
+  pbmc_vector[[i]] <- pbmc
+  rm(pbmc)
+}
+
+genes.use <- c()
+for (i in 1:length(pbmc_vector)) {
+  genes.use <- c(genes.use, head(rownames(pbmc_vector[[i]]@hvg.info), 1000))
+}
+genes.use <- names(which(table(genes.use) > 1))
+for (i in 1:length(pbmc_vector)) {
+  genes.use <- genes.use[genes.use %in% rownames(pbmc_vector[[i]]@scale.data)]
+}
+
+# Run CCA
+pbmc <- RunMultiCCA(pbmc_vector, genes.use = genes.use, num.cc = 30)
+MetageneBicorPlot(pbmc, grouping.var = "group", dims.eval = 1:30)
+
+# Run rare non-overlapping filtering (no cells detected here as expected)
+pbmc <- CalcVarExpRatio(pbmc, reduction.type = "pca", grouping.var = "orig.ident", dims.use = 1:30)
+
+unique(as.character(pbmc@meta.data$orig.ident))
+
+# Alignment
+pbmc <- AlignSubspace(pbmc, reduction.type = "cca", grouping.var = "orig.ident", dims.align = 1:30)
+
+
+
+
+
+
+
+
+### from  HeJian  Smart-Seq
+options(stringsAsFactors = F)
+setwd("D:/data/bzj2018human 小胚数据/CS10_16/")
+rm(list = ls())
+
+load("D:/data/human HSC analysis//human HSC/bzj20180427/cellcyclegenes.RData")
+load("D:/data/human HSC analysis//human HSC/bzj20180427/labcolors.RData")
+
+#####
+# data_umi <- cbind(data_raw0330, data_raw0411, data_raw170228, data_raw170324, data_raw20180625, data_raw160707, data_raw170421)
+# data_annot <- rbind(data_annot0330[, c("stage", "location")], data_annot0411[, c("stage", "location")], 
+#                     data_annot170228[, c("stage", "location")], data_annot170324[, c("stage", "location")],
+#                     data_annot20180625[, c("stage", "location")], data_annot160707[, c("stage", "location")],
+#                     data_annnot170421[, c("stage", "location")])
+# save(data_umi, data_annot, file = "D:/data/bzj2018human 小胚数据/CS10_16/CS10_16_Rawdata_Annotation.RData")
+
+load(file = "CS10_16_Rawdata_Annotation.RData")
+load(file = "CS10_16_annot.RData")
+
+data_annot <- subset(CS10_16_annot, Cluster == "EC_IE" & location %in% c("Body", "DA"))
+data_umi <- data_umi[, rownames(data_annot)]
+table(data_annot$stage, data_annot$location)
+
+ERCC <- base::grep("ERCC-|RGC-|RPS|RPL", rownames(data_umi), value = F)
+data_umi <- data_umi[-ERCC,]
+####
+#####
+library(Seurat)
+# cowplot enables side-by-side ggplots
+library(cowplot)
+
+
+for (i in unique(data_annot$stage)) {
+  seu_name <- paste("seu", i, sep="_")
+  assign(seu_name, CreateSeuratObject(data_umi[, rownames(subset(data_annot, stage == i))], 
+                                      meta.data = subset(data_annot, stage == i)))
+}
+  
+seu.list <- list(seu_CS10, seu_CS11, seu_CS12, seu_CS13, seu_CS14, seu_CS15, seu_CS16)
+seu.list <- lapply(seu.list, function(x){
+  x = NormalizeData(x)
+  cc.genes <- readLines(con = "D:/data/bzj2018human 小胚数据/cell_cycle_vignette_files/regev_lab_cell_cycle_genes.txt")
+  cc.genes <- toupper(cc.genes)
+  s.genes <- cc.genes[1:43]
+  g2m.genes <- cc.genes[44:97]
+  x <- CellCycleScoring(x, g2m.genes = g2m.genes, s.genes = s.genes, set.ident = T)
+  x <- ScaleData(x, vars.to.regress = c("S.Score", "G2M.Score")) 
+  x = FindVariableGenes(x)
+})
+
+hvg.union <- c()
+for (i in 1:length(seu.list)) {
+  hvg.union = c(hvg.union, head(rownames(seu.list[[i]]@hvg.info), 1000))
+  hvg.union = unique(hvg.union)
+}
+
+
+seu.cca <- RunMultiCCA(object = seu.list, genes.use = hvg.union, num.ccs = 15)
+
+# visualize results of CCA plot CC1 versus CC2 and look at a violin plot
+p1 <- DimPlot(object = seu.cca, reduction.use = "cca", group.by = "stage", pt.size = 2, 
+              do.return = TRUE)
+p2 <- VlnPlot(object = seu.cca, features.plot = "CC1", group.by = "stage", do.return = TRUE)
+plot_grid(p1, p2)
+
+PrintDim(object = seu.cca, reduction.type = "cca", dims.print = 1:2, genes.print = 10)
+# choose CCs for downstream analysis and then ‘align them’
+# here explore the CC dimensions as we have previously demonstrated for PCA.
+DimHeatmap(object = seu.cca, reduction.type = "cca",  dim.use = 1:9, 
+           do.balanced = TRUE)
+DimHeatmap(object = seu.cca, reduction.type = "cca",  dim.use = 10:15, 
+           do.balanced = TRUE)
+
+# Before we align the subspaces, we first search for cells whose expression profile cannot \
+# be well-explained by low-dimensional CCA, compared to low-dimensional PCA.
+# seu.cca <- CalcVarExpRatio(object = seu.cca, reduction.type = "pca", grouping.var = "stage", dims.use = 1:9)
+
+# We discard cells where the variance explained by CCA is <2-fold (ratio <
+# 0.5) compared to PCA
+seu.all.save <- seu.cca
+# seu.cca <- SubsetData(object = seu.cca, subset.name = "var.ratio.pca", accept.low = 0.1)
+
+# Now we align the CCA subspaces, which returns a new dimensional reduction called cca.aligned
+seu.cca <- AlignSubspace(object = seu.cca, reduction.type = "cca", grouping.var = "stage", 
+                      dims.align = 1:15)
+# Visualize the aligned CCA and perform integrated analysis
+p1 <- VlnPlot(object = seu.cca, features.plot = "ACC1", group.by = "stage", 
+              do.return = TRUE)
+p2 <- VlnPlot(object = seu.cca, features.plot = "ACC2", group.by = "stage", 
+              do.return = TRUE)
+plot_grid(p1, p2)
+
+# Now we can run a single integrated analysis on all cells!
+seu.cca <- RunPCA(seu.cca)
+seu.cca <- ProjectPCA(seu.cca)
+DimElbowPlot(seu.cca)
+PCHeatmap(seu.cca, pc.use = 1:9)
+PCHeatmap(seu.cca, pc.use = 10:18)
+DimPlot(seu.cca,  pt.size = 2, dim.1 = 1, dim.2 = 2, reduction.use = "pca", cols.use = pal_dolphin, 
+        do.return = T, group.by = "stage")
+myFeaturePlot(seu.cca, features.plot = c("PROCR","CD44","KIT","ETV2","PECAM1","CDH5","RUNX1","SOX17","GJA5", "NR2F2","HMMR","G2M.Score"), dr = "pca", ncol = 4)
+
+
+seu.cca <- RunTSNE(seu.cca, reduction.use = "cca.aligned", dims.use = 1:15)
+DimPlot(seu.cca,  pt.size = 2, dim.1 = 1, dim.2 = 2, reduction.use = "tsne", cols.use = pal_dolphin, 
+        do.return = T, group.by = "stage")
+
+source(file = "D:/data/bzj2018human 小胚数据/seurat_utils.R")
+myFeaturePlot(seu.cca, features.plot = c("PROCR","CD44","KIT","ETV2","PECAM1","CDH5","RUNX1","SOX17","GJA5", "NR2F2","HMMR","G2M.Score"), dr = "tsne", ncol = 4)
+myFeaturePlot(seu.cca, features.plot = c("MEG3", "MALAT1", "TUG1"), dr = "tsne", ncol = 2)
+
+PK44_gene <- read.csv("D:/data/bzj2018human 小胚数据/body_analysis/PK44_genelist.csv", row.names = 1)
+PK44_gene <- as.character(PK44_gene$x)
+Hemato_markers <- c("CD34","CD38","THY1","PTPRC","ITGA6","MME","FLT3","SELL","IL3RA","TFRC","GYPA", "PECAM1",
+                    "CDH5","EPCAM","LEPR","LEPROT","PDGFRA","PDGFRB", "CD19","CD33","ITGAM","ITGA2B",
+                    "KIT","CD36","EPOR", "PROCR","VNN2","CD9","GFI1B")
+EC_markers <- c("RUNX1", "GATA1", "MYB", "GATA3", "BMP4", "LMO2", "ITGA2B", "THY1", "KIT", "PTPRC", "CD38",
+                "CDH5", "PECAM1", "TEK", "TAL1", "FLI1", "SOX17")
+gene_HEC <- union(union(EC_markers, PK44_gene), Hemato_markers)
+library(matrixStats)
+# gene_HEC <- intersect(gene_HEC, rownames(seu.cca@raw.data[rowVars(as.matrix(seu.cca@raw.data)) > 1,]))
+gene_HEC <- intersect(gene_HEC, rownames(seu.cca@data))
+
+myFeaturePlot(seu.cca, gene_HEC[1:12], dr = "tsne", ncol = 4)
+myFeaturePlot(seu.cca, gene_HEC[13:24], dr = "tsne", ncol = 4)
+myFeaturePlot(seu.cca, gene_HEC[25:36], dr = "tsne", ncol = 4)
+myFeaturePlot(seu.cca, gene_HEC[37:48], dr = "tsne", ncol = 4)
+myFeaturePlot(seu.cca, gene_HEC[49:60], dr = "tsne", ncol = 4)
+myFeaturePlot(seu.cca, gene_HEC[61:63], dr = "tsne", ncol = 3)
+myFeaturePlot(seu.cca, features.plot = toupper(c("Efnb2","Dll4","Hey1","Gja4","Unc5b", "Ephb4","Nr2f2","Nrp2","Aplnr","Flt4", "Nrp1", "Gja5")), dr = "tsne", ncol = 4)
+myFeaturePlot(seu.cca, features.plot = c("MKI67", "HMMR", "PROX1", "HLF"), dr = "tsne", ncol = 2)
+
+pre_HSC_sigGenes <- readxl::read_xlsx("D:/data/bzj2018human 小胚数据/body_analysis/CS10_CS14/pre-HSC signature genes.xlsx")
+pre_HSC_sigGenes <- pre_HSC_sigGenes$`T1&T2 OVERLAP(98)`
+pre_HSC_sigGenes <- intersect(toupper(pre_HSC_sigGenes), rownames(seu.cca@raw.data[rowVars(as.matrix(seu.cca@raw.data)) > 1,]))
+
+myFeaturePlot(seu.cca, features.plot = pre_HSC_sigGenes[1:12], dr = "tsne", ncol = 4)
+myFeaturePlot(seu.cca, features.plot = pre_HSC_sigGenes[13:24], dr = "tsne", ncol = 4)
+myFeaturePlot(seu.cca, features.plot = pre_HSC_sigGenes[25:36], dr = "tsne", ncol = 4)
+myFeaturePlot(seu.cca, features.plot = pre_HSC_sigGenes[37:48], dr = "tsne", ncol = 4)
+myFeaturePlot(seu.cca, features.plot = pre_HSC_sigGenes[49:60], dr = "tsne", ncol = 4)
+myFeaturePlot(seu.cca, features.plot = pre_HSC_sigGenes[61:68], dr = "tsne", ncol = 4)
+
+#### 
+pHEC <- FeaturePlot(object = seu.cca, features.plot = "RUNX1", do.identify = T)
+
+seu.cca@meta.data$cluster2 <- as.character(seu.cca@meta.data$cluster)
+
+seu.cca@meta.data[pHEC, ]$cluster2 <- "pHEC"
+seu.cca@meta.data[setdiff(rownames(seu.cca@meta.data), pHEC), ]$cluster2 <- "others"
+
+seu.cca <- SetAllIdent(seu.cca, id = "cluster2")
+allmarkers2 <- FindMarkers(seu.cca, ident.1 = "pHEC", ident.2 = "others", logfc.threshold = log(1.5), 
+                           only.pos = T)
+myFeaturePlot(seu.cca, features.plot = rownames(allmarkers2)[1:12], dr = "tsne", ncol = 4)
+myFeaturePlot(seu.cca, features.plot = rownames(allmarkers2)[13:24], dr = "tsne", ncol = 4)
+
+pHEC <- names(which(seu.cca@data["RUNX1", ] > 0 & seu.cca@data["CD44", ] > 1))
+seu.cca@meta.data$cluster2 <- as.character(seu.cca@meta.data$cluster)
+
+seu.cca@meta.data[pHEC, ]$cluster2 <- "pHEC"
+seu.cca@meta.data[setdiff(rownames(seu.cca@meta.data), pHEC), ]$cluster2 <- "others"
+
+col_cluster2 <- setNames(pal_dolphin[1:length(unique(seu.cca@meta.data$cluster2))], 
+                         sort(unique(seu.cca@meta.data$cluster2)))
+focusTSNEPlot(seu.cca, group.by = "cluster2", focus = "pHEC", colors.use =  col_cluster2)
+
+
+seu.cca <- FindClusters(seu.cca, reduction.type = "cca.aligned", dims.use = 1:15,  k.param = 15,
+                        plot.SNN = T, resolution = c(0.8), force.recalc = T)
+
+DimPlot(seu.cca, reduction.use = "tsne", dim.1 = 1, dim.2 = 2, group.by = "res.0.8", 
+        pt.size = 2, cols.use = mycolors)
+
+seu.cca@meta.data$cluster <- seu.cca@meta.data$res.0.8
+ph_colors <- list(stage = setNames(myrainbow[1:length(unique(seu.cca@meta.data$stage))], sort(unique(seu.cca@meta.data$stage))),
+                  cluster = setNames(mycolors[1:length(unique(seu.cca@meta.data$cluster))], sort(unique(seu.cca@meta.data$cluster))),
+                  location = setNames(bertie.color[1:length(unique(seu.cca@meta.data$location))], sort(unique(seu.cca@meta.data$location))))
+
+seu.cca <- SetAllIdent(seu.cca, id = "cluster")
+allmarkers <- FindAllMarkers(seu.cca, logfc.threshold = log(1.5),
+                             only.pos = T, test.use = "wilcox")
+sig_allmarkers <- subset(allmarkers, p_val_adj < 0.01)
+library(dplyr)
+sig_allmarkers %>% group_by(cluster) %>% top_n(10, -p_val) -> top10
+
+heatmap_data <- MinMax(data = seu.cca@scale.data, min = -2.5, max = 2.5)
+pheatmap(heatmap_data[top10$gene, order(seu.cca@meta.data[, "cluster"])],
+         annotation_colors = ph_colors, fontsize_row = 7, cluster_rows = F, 
+         cluster_cols = F, annotation_col = seu.cca@meta.data[,c("cluster", "location", "stage"), drop = F],
+         show_colnames = F,  color =  gplots::colorpanel(n = 100, "#FF00FF","#000000","#FFFF00"),
+         border_color = NA, gaps_col = cumsum(table(seu.cca@meta.data$cluster)))
+
+bpGOEnrich(pbmc.markers = sig_allmarkers, org = "human")
+
+
+
+allTF_human <- read.csv("D:/data/bzj2018human 小胚数据/allTF.human.csv", header = T, row.names = 1)
+sig_TF <- subset(sig_allmarkers, gene %in% allTF_human$x)
+sig_TF %>% group_by(cluster) %>% top_n(10, -p_val) -> top10_TF
+heatmap_data2 <- MinMax(data = seu.cca@scale.data, min = -1, max = 1)
+pheatmap(heatmap_data[top10_TF$gene, order(seu.cca@meta.data[, "cluster"])],
+         annotation_colors = ph_colors, fontsize_row = 8, cluster_rows = F, 
+         cluster_cols = F, annotation_col = seu.cca@meta.data[,c("cluster", "location", "stage"), drop = F],
+         show_colnames = F,  color =  gplots::colorpanel(n = 100, "#FF00FF","#000000","#FFFF00"),
+         border_color = NA, gaps_col = cumsum(table(seu.cca@meta.data$cluster)))
+
+source("D:/data/bzj2018human 小胚数据/TACS_analysis_plot.R")
+# seu.tacs <- SubsetData(seu.cca, cells.use = rownames(subset(seu.cca@meta.data, cluster %in% c(0,1,2,4))))
+TACS <- TACS(dge = seu.cca, gene1 = "RUNX1", gene2 = "SOX17", cutoffs = c(0, 0), return_val = "all", density = T, col = ph_colors$cluster,
+             facet_by = "cluster", num_genes_add = 100, genesets_predetermined = F, dge_reference = seu.cca)
+TACS$plot
+
+seu.cca <- AddAVscore(seu.cca, org = "human", gene.max = 10, add.dr = T)
+
+
+######### RACEID ######
+## load class definition and functions
+source("D:/data/bzj2018human 小胚数据/RaceID_class.R")
+
+## input data
+# x <- read.csv("transcript_counts_intestine.xls",sep="\t",header=TRUE)
+# rownames(x) <- x$GENEID
+# prdata: data.frame with transcript counts for all genes (rows) in all cells (columns); with rownames == gene ids; remove ERCC spike-ins 
+# prdata <- x[grep("ERCC",rownames(x),invert=TRUE),-1]
+
+## RaceID
+# initialize SCseq object with transcript counts
+sc <- SCseq(as.data.frame(as.matrix(seu.cca@raw.data)))
+# filtering of expression data
+sc <- filterdata(sc, mintotal=3000, minexpr=5, minnumber=1, maxexpr=500, downsample=FALSE, dsn=1, rseed=17000)
+# k-means clustering
+sc <- clustexp(sc, clustnr=20,bootnr=50,metric="pearson",do.gap=TRUE,SE.method="Tibs2001SEmax",SE.factor=.25,B.gap=50,cln=0,rseed=17000)
+# compute t-SNE map
+sc <- comptsne(sc,rseed=15555)
+# detect outliers and redefine clusters
+sc <- findoutliers(sc, outminc=5,outlg=2,probthr=1e-3,thr=2**-(1:40),outdistquant=.75)
+
+## diagnostic plots
+# gap statistics
+plotgap(sc)
+# silhouette of k-means clusters
+plotsilhouette(sc)
+# Jaccard's similarity of k-means clusters
+plotjaccard(sc)
+# barchart of outlier probabilities
+plotoutlierprobs(sc)
+# regression of background model
+plotbackground(sc)
+# dependence of outlier number on probability threshold (probthr)
+plotsensitivity(sc)
+# heatmap of k-means cluster
+clustheatmap(sc,final=FALSE,hmethod="single")
+# heatmap of final cluster
+clustheatmap(sc,final=TRUE,hmethod="single")
+# highlight k-means clusters in t-SNE map
+plottsne(sc,final=FALSE)
+# highlight final clusters in t-SNE map
+plottsne(sc,final=TRUE)
+# highlight cell labels in t-SNE map
+plotlabelstsne(sc,labels=sub("(\\_\\d+)","",names(sc@ndata)))
+# highlight groups of cells by symbols in t-SNE map
+plotsymbolstsne(sc,types=sub("(\\_\\d+)$","", names(sc@ndata)))
+# highlight transcirpt counts of a set of genes in t-SNE map, e. g. all Apoa genes
+g <- c("Apoa1__chr9", "Apoa1bp__chr3", "Apoa2__chr1", "Apoa4__chr9", "Apoa5__chr9")
+plotexptsne(sc,g,n="Apoa genes",logsc=TRUE)
+
+## identification of marker genes
+# differentially regulated genes in each cluster compared to the full ensemble
+cdiff <- clustdiffgenes(sc,pvalue=.01)
+
+## write results to text files
+# final clusters 
+x <- data.frame(CELLID=names(sc@cpart),cluster=sc@cpart)
+write.table(x[order(x$cluster,decreasing=FALSE),],"cell_clust.xls",row.names=FALSE,col.names=TRUE,sep="\t",quote=FALSE)
+
+# differentially expressed genes in cluster
+for ( n in names(cdiff) ) write.table(data.frame(GENEID=rownames(cdiff[[n]]),cdiff[[n]]),paste(paste("cell_clust_diff_genes",sub("\\.","\\_",n),sep="_"),".xls",sep=""),row.names=FALSE,col.names=TRUE,sep="\t",quote=FALSE)
+
+# differentially expressed genes between two sets of clusters, e. g. cluster 1 and clusters 2,3
+d <- diffgenes(sc,cl1=1,cl2=c(2,3),mincount=5)
+plotdiffgenes(d,gene=names(d$z)[1])
+
+
+RaceID_cluster <- as.data.frame(sc@kmeans$kpart)
+colnames(RaceID_cluster) <- "RaceID"
+
+seu.cca <- AddMetaData(seu.cca, RaceID_cluster)
+sc_tsne_data <- sc@tsne
+rownames(sc_tsne_data) <- names(sc@ndata)
+sc_tsne_data$RaceID <- RaceID_cluster$RaceID
+
+library(ggplot2)
+ggplot(data = sc_tsne_data, mapping = aes(x = V1, y = V2)) + 
+  geom_point(color = factor(sc_tsne_data$RaceID)) + scale_alpha_manual(values = pal_dolphin) +
+  labs(x = "dim1", y = "dim2")
+
+tmp <- seu.cca
+tmp@dr$tsne@cell.embeddings[, c(1,2)] <- as.matrix(sc_tsne_data[, c(1, 2)])
+
+myFeaturePlot(tmp, gene_HEC[1:12], dr = "tsne", ncol = 4)
+myFeaturePlot(tmp, gene_HEC[13:24], dr = "tsne", ncol = 4)
+myFeaturePlot(tmp, gene_HEC[25:36], dr = "tsne", ncol = 4)
+
