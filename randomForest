@@ -1,0 +1,617 @@
+from Lzc (原稿)
+
+options(stringsAsFactors = F)
+rm(list = ls())
+## workspace - where ALL data will be created and stored!
+#wkdir <- "C:/Users/Hazard/Documents/Workspace/humanec/randomForest/ward.D2_exccgenes/"
+#wkdir <- "K:/307Hospital/Workspace/Human-EC/humanec/randomForest/"
+#setwd(wkdir)
+library(org.Hs.eg.db)
+library(AnnotationDbi)
+gogenes <- select(org.Hs.eg.db, keys = c("GO:0007049"), columns = c("SYMBOL"), keytype = "GO")
+cellcyclegenes <- sort(unique(gogenes$SYMBOL))
+## log.txt - write messages into log.txt
+write(paste0(Sys.time(),"  START! #"), file = "log.txt", append = F)
+## run clustering
+set.seed(1)
+rfClustering("./","seurat.big", cellcyclegenes, 0, 0) # !!! there must be "gene_matrix0-0.RData" in the wkdir!!!
+                                        # Folders "M-N" and Files "gene_matrixM-N.RData" will be created. Notice M is layer, N is leaf.
+## function body
+rfClustering <- function(wkdir, geneMat_prefix, ex_genes, layer=NA, leaf=NA){
+
+require(randomForest)
+require(gplots)
+require(stats)
+require(base)
+###
+###################################################################################################
+if(is.na(layer) || is.na(leaf)){
+  stop("Please define layer and leaf!")
+}
+print(paste0("Running ",layer,"-",leaf))
+setwd(wkdir)
+expression_matix = load(paste0(geneMat_prefix,layer,"-",leaf,".RData")) # input gene expression matrix
+gene_mat <- get(expression_matix)
+###################################################################################################
+### 0. Checking input gene expression matrix
+###################################################################################################
+#Check empty entries
+clean_mat <- function(x){
+  row_rm <- which(rowSums(x == 0 | is.na(x)) == ncol(x))
+  col_rm <- which(colSums(x == 0 | is.na(x)) == nrow(x))
+  if(length(row_rm) > 0) {
+    x <- x[-row_rm, ]
+  }
+  if(length(col_rm) > 0) {
+    x <- x[ , -col_rm]
+  }
+  return(x)
+}
+
+gene_mat <- clean_mat(gene_mat)
+###################################################################################################
+### 2. Computing over-dispersed genes
+###################################################################################################
+library(Seurat)
+pbmc <- CreateSeuratObject(raw.data = gene_mat)
+pbmc <- FindVariableGenes(object = pbmc, do.plot = F, x.low.cutoff = 1, x.high.cutoff = Inf, y.cutoff = 1)
+#VariableGenePlot(pbmc,  x.low.cutoff = 1, x.high.cutoff = Inf, y.cutoff = 1)
+m <- gene_mat[setdiff(pbmc@var.genes, ex_genes), ]
+###################################################################################################
+###
+######CLUSTERING STEP######
+###
+###################################################################################################
+### 3. Initial hierarchical clustering by over-dispersed genes 
+###################################################################################################
+myCol <- c("darkblue", "white", "red")
+hc <- hclust(as.dist(1-cor(m, method = "pearson", use = "pairwise.complete.obs")), method = "ward.D2")
+cl <- cutree(hc, k=2)
+if ((table(cl)[1] < 10) || (table(cl)[2] < 10 )) {
+  stop("The sizes of one or both clusters are too small for further analysis!")
+}
+cl_a <- m[ , cl == 1]
+cl_b <- m[ , cl == 2]
+
+######
+workdir <- paste0(layer,"-", leaf)
+dir.create(path = workdir)
+setwd(workdir)
+set.seed(1)
+###################################################################################################
+### 4. Adjusting clusters using 2-fold over-dispersed DEGs (Optional)
+###################################################################################################
+# get_deg <- function(m1, m2, fold){
+#   m1 <- 2^m1-1
+#   m2 <- 2^m2-1
+#   p_all <- vector()
+#   delta_all <- vector()
+#   mean_all_1 <- vector()
+#   mean_all_2 <- vector()
+#   index_fc_1 <- vector()
+#   index_fc_2 <- vector()
+#   p_adj <- vector() 
+#  for (i in 1:nrow(m1)) {
+#     ttest <- t.test(m1[i, ], m2[i, ])
+#     p <- ttest$p.value
+#     p_all <- c(p_all, p)
+#     avg_1 <- log2(mean(m1[i, ], na.rm = T))
+#     avg_2 <- log2(mean(m2[i, ], na.rm = T))
+#     mean_all_1 <- c(mean_all_1, avg_1)
+#     mean_all_2 <- c(mean_all_2, avg_2)
+#     delta <- avg_1 - avg_2
+#     delta_all <- c(delta_all, delta)
+#     if ((!is.na(delta)) && (!is.na(p)) && (p < 0.05)) {
+#       if (delta > log2(fold)) {
+#         index_fc_1 <- c(index_fc_1, i)
+#       }  else if(delta < -log2(fold)) {
+#         index_fc_2 <- c(index_fc_2, i)
+#       }
+#     }
+#   }
+#   if (length(p_all) > 200) {
+#     p_adj <- p.adjust(p_all, method = "BH")
+#   }
+#     return (list(index_fc_1, index_fc_2, mean_all_1, mean_all_2, delta_all, p_all, p_adj))
+# }
+get_deg <- function(pbmc, cl1, cl2, power = 0.4){
+  cll <- c(rep(1,length(cl1)), rep(2, length(cl2)))
+  names(cll) <- c(cl1, cl2)
+  pbmc <- SubsetData(pbmc, cells.use = names(cll))
+  cll <- cll[colnames(pbmc@data)]
+  pbmc <- AddMetaData(pbmc, cll, "hc_cluster")
+  pbmc <- SetAllIdent(pbmc, id = "hc_cluster")
+  pbmc_deg <- FindAllMarkers(pbmc, thresh.use = 1, min.pct = 0.25, return.thresh = 0.0, only.pos = T,test.use = "roc", latent.vars = NULL)
+  pbmc_deg <- pbmc_deg[which(pbmc_deg$power > power),]
+  return(pbmc_deg)
+}
+
+# pbmc_deg <- get_deg(pbmc, colnames(cl_a), colnames(cl_b), 0.4)
+# m_hc <- m[unique(pbmc_deg$gene), ]
+# #Check empty entries
+# 
+# m_hc <- clean_mat(m_hc)
+# 
+# hc_deg <- hclust(as.dist(1 - cor(m_hc, method = "pearson", use = "pairwise.complete.obs")), method = "ward.D2")
+# cl_hc <- cutree(hc_deg, k = 2)
+
+m_hc <- m
+#m_hc <- m[1:100,]
+cl_hc <- cl
+###################################################################################################
+###
+######CLASSIFICATION STEP######
+###
+###################################################################################################
+### 5. Random Forest on clusters from clustering step   
+###################################################################################################
+cl_deg_a <- t(m_hc[ , cl_hc == 1])
+cl_deg_b <- t(m_hc[ , cl_hc == 2])
+cate_bf_fs <- as.factor(c(rep("a", nrow(cl_deg_a)), rep("b", nrow(cl_deg_b))))
+feature_bf_fs <- as.matrix(rbind(cl_deg_a, cl_deg_b))
+set <- sample(1: nrow(feature_bf_fs), nrow(feature_bf_fs), replace=F)
+cate_bf_fs <- cate_bf_fs[set]
+feature_bf_fs <- feature_bf_fs[set, ]
+rf_bf_fs <- randomForest(feature_bf_fs, cate_bf_fs, importance = TRUE, proximity = TRUE)
+imp_bf_fs <- importance(rf_bf_fs, type = 1)
+###################################################################################################
+### 6. Feature selection
+###################################################################################################
+print("6. Feature Selection")
+fs <- rfcv(feature_bf_fs, cate_bf_fs, cv.fold = 10, scale = "log", step = 0.9, recursive = F)
+len <- length(fs$n.var[fs$error.cv == min(fs$error.cv)])
+min_fs <- fs$n.var[fs$error.cv == min(fs$error.cv)][len] #get least features
+ind <- order(-imp_bf_fs)[1: min_fs]
+feature_fs <- feature_bf_fs[ , ind, drop = F]
+cate_fs <- cate_bf_fs
+write.table(colnames(feature_fs), "05.Selected-features.txt", quote = F, col.names = F, row.names = F, sep = "\t") 
+###################################################################################################
+### 7. Selecting training set with random forest prediction internal vote probabilities > 0.6 
+###################################################################################################
+rf_fs <- randomForest(feature_fs, as.factor(cate_fs), importance=TRUE, proximity=TRUE)
+
+fea1_fs <- data.frame()
+fea1_fs <- feature_fs[(rf_fs$predicted == 'a') & (rf_fs$votes[ , 1] > 0.6), , drop = FALSE]
+cat1_fs <- rf_fs$predicted[(rf_fs$predicted =='a') & (rf_fs$votes[ , 1] > 0.6)]
+fea2_fs <- data.frame()
+fea2_fs <- feature_fs[(rf_fs$predicted == 'b') & (rf_fs$votes[ , 2] > 0.6), , drop = FALSE]
+cat2_fs <- rf_fs$predicted[(rf_fs$predicted =='b') & (rf_fs$votes[ , 2] > 0.6)]
+cate <- as.factor(c(as.character(cat1_fs), as.character(cat2_fs)))
+feature <- as.matrix(rbind(fea1_fs, fea2_fs))
+set <- sample(1: nrow(feature), nrow(feature), replace = F)
+cate <- cate[set]
+feature <- feature[set, ,drop = F] 
+###################################################################################################
+### 8. 100 runs of random forest 10-fold cross validation
+###################################################################################################
+print("8. 100 runs of rf")
+err_fs <- vector()
+cate_table <- data.frame()
+k <- 10 # 10-fold cross validation
+for (run in 1: 100) {
+  cate_table <- rbind(cate_table, table(cate))
+  n <- floor(nrow(feature) / k)
+  subset <- sample(1: nrow(feature), n, replace = F)
+  train_feature <- feature[-subset, , drop = F]
+  train_cate <- cate[-subset]
+  test_feature <- feature[subset, , drop = F]
+  test_cate <- cate[subset]
+  retry <- -1
+  # Ensure each training set has > 5 samples
+  if (table(train_cate)[1] < 5 || table(train_cate)[2] < 5) {
+    retry <- 50
+    while(retry > 0){
+      subset <- sample(1: nrow(feature), n, replace = F)
+      train_feature <- feature[-subset, ,drop = F]
+      train_cate <- cate[-subset]
+      test_feature <- feature[subset, , drop = F]
+      test_cate<- cate[subset]
+      if (table(train_cate)[1] < 5 || table(train_cate)[2] < 5) {
+        retry <- retry - 1
+      }  else {
+        retry <- -1
+      }
+    }
+  }
+  if (retry == 0) {
+    stop("The test set is too small!")
+  }
+  if(retry == -1){
+    rf <- randomForest(train_feature, as.factor(train_cate), importance = TRUE, proximity = TRUE)
+    pred2_fs <- predict(rf, newdata = test_feature)
+    mis <- length(test_cate[test_cate != pred2_fs]) / length(test_cate)
+    err_fs <- c(err_fs, mis)
+
+    cate <- as.factor(c(as.character(train_cate), as.character(pred2_fs)))
+    feature <- as.matrix(rbind(train_feature, test_feature))
+    set <- sample(1: nrow(feature), nrow(feature), replace=F)
+    cate <- cate[set]
+    feature <- feature[set, ,drop = F]
+  }
+}
+###################################################################################################
+### 9. Finalizing clusters from classification step
+###################################################################################################
+rf_whole <- randomForest(feature, as.factor(cate), importance = TRUE, proximity = TRUE)
+rf_whole
+pred_whole <- predict(rf_whole, newdata = feature_fs)
+pred_whole_prob <- predict(rf_whole, newdata = feature_fs, type = "prob")
+fea1 <- data.frame()
+fea2 <- data.frame()
+fea3 <- data.frame()
+cat1 <- vector()
+cat3 <- vector()
+cat3 <- vector()
+cate_whole <- vector()
+for (i in 1: length(pred_whole)) {
+  if ((pred_whole[i] == 'a') && (pred_whole_prob[i, 1] > 0.55)){
+    cate_whole[i] <- 'a'
+  }  else if ((pred_whole[i] == 'a') && (pred_whole_prob[i, 1] <= 0.55)) {
+    cate_whole[i]<-'c'
+  }  else if ((pred_whole[i] == 'b') && (pred_whole_prob[i, 2] > 0.55)) {
+    cate_whole[i] <- 'b'
+  }  else if ((pred_whole[i] == 'b') && (pred_whole_prob[i, 2] <= 0.55)){
+    cate_whole[i] <- 'c'
+  }
+}
+cat1 <- as.factor(as.character(cate_whole[cate_whole == 'a']))
+cat2 <- as.factor(as.character(cate_whole[cate_whole == 'b']))
+cat3 <- as.factor(as.character(cate_whole[cate_whole == 'c']))
+fea1 <- feature_fs[cate_whole == 'a', , drop = FALSE]
+fea2 <- feature_fs[cate_whole == 'b', , drop = FALSE]
+fea3 <- feature_fs[cate_whole == 'c', , drop = FALSE]
+# Output classification stats
+pdf("06.Classification_stat.pdf")
+par(mfrow = c(2, 2))
+with(fs, plot(n.var, error.cv, log = "x", type = "o", lwd = 2, xlab = "Number of features", ylab = "Error of cross-valicatoin", main = "Feature selections"))
+plot(err_fs, col = "blue", main = "Misclassification_error_fs", xlab = "Run", ylab = "Error")
+lines(err_fs, col = "blue", lwd = 2)
+plot(cate_table[ , 1], col = "magenta", main = "Number of cases in\nClass 1", xlab = "Runs", ylab = "Number of samples")
+lines(cate_table[ ,1], col = "magenta", lwd = 2)
+plot(cate_table[ , 2], col = "cyan", main = "Number of cases in\nClass 2", xlab = "Runs", ylab = "Number of samples")
+lines(cate_table[ , 2],col = "cyan", lwd = 2)
+dev.off()
+
+# Output expression stats and clusters
+cl_1 <- gene_mat[ , rownames(fea1)]
+cl_2 <- gene_mat[ , rownames(fea2)]
+
+write.table(rownames(fea1), "07.Cluster1_sample-list.txt", quote = F, sep = "\t", row.names = F, col.names = F)
+write.table(rownames(fea2), "07.Cluster2_sample-list.txt", quote = F, sep = "\t", row.names = F, col.names = F)
+write.table(rownames(fea3), "07.Cluster3_sample-list.txt", quote = F, sep = "\t", row.names = F, col.names = F)
+get_fs_deg <- get_deg(pbmc, colnames(cl_1), colnames(cl_2), 0.4)
+
+write.table(get_fs_deg, "08.All_genes_stat.txt", quote = F, row.names = F, sep = "\t")
+# Generating heatmap using selected-genes
+if(length(unique(get_fs_deg$gene)) >= 6){
+  
+m_2fc <- as.matrix(cbind(cl_1[unique(get_fs_deg$gene), ], cl_2[unique(get_fs_deg$gene), ]))
+hr_m_2fc <- hclust(as.dist(1 - cor(t(m_2fc), method = "pearson", use = "pairwise.complete.obs")), method = "ward.D2")
+pdf("10.Heatmap.pdf")
+heatmap.2(m_2fc, trace = "none", Rowv = as.dendrogram(hr_m_2fc), dendrogram = "row", Colv = F, colsep = ncol(cl_1), sepwidth = 0.1, sepcolor = "green", col = colorRampPalette(c(myCol)), ColSideColors = c(rep("red", ncol(cl_1)), rep("blue", ncol(cl_2))), main = "Heatmp of clusters", cexCol = 0.4, cexRow = 0.4, labRow = NULL)
+legend("topright", legend = c("Cluster 1", "Cluster 2"), fill = c("red", "blue"), border="white", bty="n", cex=1)
+dev.off()
+}
+###END###
+write(paste0(Sys.time(),"  SUCCEED  ",layer,"-",leaf), file = paste0(wkdir,"/log.txt"), append = T)
+setwd(wkdir)
+
+old_ls <- ls()
+
+new_layer <- layer+1
+new_leaf <- 2*leaf
+save(cl_1, file = paste0(geneMat_prefix, new_layer,"-", new_leaf,".RData"))
+save(cl_2, file = paste0(geneMat_prefix, new_layer,"-", new_leaf+1,".RData"))
+rm(list = setdiff(old_ls, c("geneMat_prefix", "wkdir", "ex_genes","rfClustering")))
+
+tmp <- try(rfClustering(wkdir, geneMat_prefix, ex_genes, new_layer, new_leaf))
+if(class(tmp) =="try-error"){
+  write(paste0(Sys.time(),"  FAILED  ",new_layer, "-",new_leaf), file = paste0(wkdir,"/log.txt"), append = T)
+  write(tmp, file = paste0(wkdir,"/log.txt"), append = T)
+}
+
+tmp <- try(rfClustering(wkdir, geneMat_prefix, ex_genes, new_layer, new_leaf+1))
+if(class(tmp) =="try-error"){
+  write(paste0(Sys.time(),"  FAILED  ",new_layer, "-",new_leaf+1), file = paste0(wkdir,"/log.txt"), append = T)
+  write(tmp, file = paste0(wkdir,"/log.txt"), append = T)
+}
+}
+## codes used to test
+rfClustering(wkdir, "test", cellcyclegenes, 0, 0)
+geneMat_prefix = "test"
+layer=0
+leaf=0
+
+
+### parse the results of rfClustering
+dir_pre <- "ward.D2_exccgenes/"
+log <- readLines(con = paste0(dir_pre,"/log.txt"))
+succeed <- gsub(".*SUCCEED  ","",grep("  SUCCEED  ", log, value = T))
+failed <- gsub(".*FAILED  ","",grep("  FAILED  ", log, value = T))
+buildTreeDF <- function(succeed, failed, root = "0-0"){
+  if(length(intersect(succeed, failed)) != 0){
+    stop("some nodes both succeed and failed!")
+  }
+  df.succeed <- t(sapply(succeed, function(x) as.numeric(strsplit(x, split = "-")[[1]])))
+  df.failed <-  t(sapply(failed, function(x) as.numeric(strsplit(x, split = "-")[[1]])))
+  
+  df.tree <- as.data.frame(rbind(df.succeed, df.failed))
+  colnames(df.tree) <- c("Layer", "Leaf")
+  df.tree$Node <- c(succeed, failed)
+  df.tree$Parent <- NA
+  df.tree$Child <- NA
+  df.tree$Status <- NA
+  df.tree$Check <- FALSE
+  for(i in 1:nrow(df.tree)){
+    node <- df.tree$Node[i]
+    layer <- df.tree$Layer[i]
+    leaf <- df.tree$Leaf[i]
+    #parent check
+    if(node == root){
+      df.tree$Parent[i] <- root
+    }else{
+      p.layer <- layer - 1
+      p.leaf <- floor(leaf/2)
+      p.node <- paste0(p.layer, "-", p.leaf)
+      if(p.node %in% succeed){
+        df.tree$Parent[i] <- p.node
+      }else{
+        stop(paste0(node,"'s parent ",p.node," NOT succeed as expected!"))
+      }
+    }
+    #child check
+    c.layer <- layer + 1
+    c.leaves <- c(2*leaf, 2*leaf+1)
+    c.nodes <- paste0(c.layer, "-",c.leaves)
+    if(all(c.nodes %in% c(succeed, failed))){
+      if(node %in% succeed){
+        df.tree$Child[i] <- paste0(c.nodes, collapse = ", ")
+      }else{
+        stop(paste0(node,"'s children exist, as unexpected!"))
+      }
+    }else if(all(!(c.nodes %in% c(succeed, failed)))){
+      if(node %in% failed){
+        df.tree$Child[i] <- ""
+      }else{
+        stop(paste0(node,"'s children do not exist, but ",node," NOT failed as expected!"))
+      }
+    }else{
+      stop(paste0(node,"'s children are NOT integrity as expected!"))
+    }
+    #check mark
+    df.tree$Status[i] <- ifelse(node %in% succeed, "SUCCEED", "FAILED")
+    df.tree$Check[i] <- TRUE
+  }
+  
+  # stop if not ok
+  if(!all(df.tree$Check)){
+    stop("Check is not all TRUE!")
+  }
+  
+  # build data.tree object
+  root_ind <- which(df.tree$Node == root)
+  df.tree$path <- NA 
+  for(i in 1:nrow(df.tree)){
+    node <- df.tree$Node[i]
+    layer <- df.tree$Layer[i]
+    leaf <- df.tree$Leaf[i]
+    path <- node
+    while(layer > df.tree$Layer[root_ind]){
+      layer <- layer-1
+      leaf <- floor(leaf/2)
+      path <- paste0(layer, "-", leaf,"/", path)
+    }
+    df.tree$path[i] <- path
+  }
+  return(df.tree)
+}
+buildHierarchy <- function(rf.dir, rf.tree, TraceBack = T, TraceBack.ratio = 0.1, TraceBack.min = 25){
+  s.rf.tree <- rf.tree[which(rf.tree$Status == "SUCCEED"),,drop=F]
+  if(!all(dir.exists(paste0(rf.dir,"/",s.rf.tree$Node)))){
+    stop("NOT all Node folders exist!")
+  }
+  
+  root.layer <- min(s.rf.tree$Layer)
+  leaf.layer <- max(s.rf.tree$Layer)
+  rf.result <- list()
+  # add the numbers of deg, leaf1, leaf2 and leaf3 to s.rf.tree
+  rf.tree$deg_num <- NA
+  rf.tree$leaf1_num <- NA
+  rf.tree$leaf2_num <- NA
+  rf.tree$leaf3_num <- NA
+  rf.tree$Node_size <- NA
+  
+  for(i in seq.int(leaf.layer, root.layer, by = -1)){
+    nodes <- s.rf.tree$Node[s.rf.tree$Layer == i]
+    clusters <- NULL
+    for(j in nodes){
+      j_ind <- which(rf.tree$Node == j)
+      node.dir <- paste0(rf.dir,"/",j)
+      feature <- read.table(paste0(node.dir,"/", "05.Selected-features.txt"), header = F)[,1]
+      cluster1 <- read.table(paste0(node.dir,"/", "07.Cluster1_sample-list.txt"), header = F)[,1]
+      cluster2 <- read.table(paste0(node.dir,"/", "07.Cluster2_sample-list.txt"), header = F)[,1]
+      cluster3 <- tryCatch(read.table(paste0(node.dir,"/", "07.Cluster3_sample-list.txt"), header = F)[,1], error = function(e) NULL)
+      degstat <- read.table(paste0(node.dir,"/", "08.All_genes_stat.txt"), header = T, sep = "\t")
+      
+      rf.tree$deg_num[j_ind] <- nrow(degstat)
+      rf.tree$leaf1_num[j_ind] <- length(cluster1)
+      rf.tree$leaf2_num[j_ind] <- length(cluster2)
+      rf.tree$leaf3_num[j_ind] <- length(cluster3)
+      rf.tree$Node_size[j_ind] <- sum(length(cluster1), length(cluster2), length(cluster3))
+      
+      rf.result[[j]] <- list(select_features = feature,
+                             samples_cluster  = unique(c(cluster1, cluster2, cluster3)),
+                             samples_cluster1 = cluster1,
+                             samples_cluster2 = cluster2,
+                             samples_cluster3 = cluster3,
+                             deg_stat = degstat)
+      
+      # child node check
+      c.nodes <- strsplit(rf.tree$Child[j_ind], ", ")[[1]]
+      c.nodes_ind <- which(rf.tree$Node %in% c.nodes)
+      rf.tree$Node_size[c.nodes_ind] <- c(length(cluster1), length(cluster2))
+      
+      if(rf.tree$Status[c.nodes_ind[1]] == "FAILED"){
+        rf.result[[c.nodes[1]]] <- list(samples_cluster = cluster1)
+      }
+      if(rf.tree$Status[c.nodes_ind[2]] == "FAILED"){
+        rf.result[[c.nodes[2]]] <- list(samples_cluster = cluster2)
+      }
+      ## traceback
+      if(TraceBack){
+        if(any(rf.tree$Status[which(rf.tree$Node %in% strsplit(rf.tree$Child[j_ind], ", ")[[1]])] == "SUCCEED")){
+          next
+        }
+        
+        leaf1_num <- length(cluster1)
+        leaf2_num <- length(cluster2)
+        
+        if(min(leaf1_num, leaf2_num)/(leaf2_num + leaf1_num) < TraceBack.ratio || min(leaf1_num, leaf2_num) < TraceBack.min){
+          rf.tree$Status[j_ind] <- "TRACEBACK"
+        }
+      }
+    }
+    
+  }
+  ## sample df
+  s.rf.tree <- rf.tree[which(rf.tree$Status == "SUCCEED"),,drop=F]
+  root.layer <- min(s.rf.tree$Layer)
+  leaf.layer <- max(s.rf.tree$Layer)
+  for(i in seq.int(root.layer, leaf.layer, by = 1)){
+    nodes <- s.rf.tree$Node[s.rf.tree$Layer == i]
+    clusters <- NULL
+    for(j in nodes){
+      node.cluster <- setNames(c(rep(paste0(j,"-a"), length(rf.result[[j]]$samples_cluster1)), 
+                                 rep(paste0(j,"-b"), length(rf.result[[j]]$samples_cluster2)),
+                                 rep(paste0(j,"-c"), length(rf.result[[j]]$samples_cluster3))),
+                               c(rf.result[[j]]$samples_cluster1, 
+                                 rf.result[[j]]$samples_cluster2, 
+                                 rf.result[[j]]$samples_cluster3))
+      clusters <- c(clusters, node.cluster)
+    }
+    if(i == root.layer){
+      rf.samples <- matrix(data = NA, nrow = length(clusters), ncol = leaf.layer - root.layer + 1, dimnames = list(names(clusters), seq.int(root.layer, leaf.layer)))
+    }
+    rf.samples[names(clusters), as.character(i)] <- clusters
+    
+    # fill NA
+    na_ind <- which(is.na(rf.samples[,as.character(i)]))
+    if(length(na_ind) > 0){
+      if(i == root.layer){
+        stop("Seems Root Layer is not divided correctly?")
+      }
+      rf.samples[na_ind, as.character(i)] <- rf.samples[na_ind, as.character(i - 1)]
+    }
+  }
+  
+  return(list(samples = as.data.frame(rf.samples), newtree = rf.tree, results = rf.result))
+}
+
+library(data.tree)
+library(igraph)
+#NODE_RESERVED_NAMES_CONST
+rf.tree <- buildTreeDF(succeed, failed, root = "0-0")
+rf.res <- buildHierarchy(rf.dir = dir_pre, rf.tree = rf.tree, T, 0.1, 10)
+
+tmp.node <- as.Node(subset(rf.res$newtree, Status == "SUCCEED"), pathName ="path")
+plot(tmp.node)
+
+#########
+library(Seurat)
+library(Rtsne)
+library(ggplot2)
+pal_dolphin <- c("#FF00AE", "#A020F1", "#000000", "#0403E5", "#FF8C01", "#8B0101", "#007502", "#FE0000", "#FFFF01", "#FF99CB", "#4A95FB", "#61FE69", "#9A7A01", "#017F8B", "#05FDFF")
+load("../pbmc.Robj")
+pdf(file = "rf.cluster.tSNE.pdf", width = 8, height = 8)
+for(layer_col in 1:ncol(rf.res$samples)){
+  rf.cluster <- rf.res$samples[,layer_col]
+  names(rf.cluster) <- rownames(rf.res$samples)
+  rf.cluster.table <- table(rf.cluster)
+  cluster.small <- names(which(rf.cluster.table < 10))
+  
+  rf.cluster[grep("-c",rf.cluster)] <- "---unc"
+  rf.cluster[rf.cluster %in% cluster.small] <- "--small"
+  
+  table(rf.cluster)
+  length(table(rf.cluster))
+  pbmc <- AddMetaData(pbmc, rf.cluster[rownames(pbmc@meta.data)], col.name = "rf.cluster")
+  print(TSNEPlot(pbmc, group.by = "rf.cluster", do.label = T, do.return = T) + 
+          scale_color_manual(values = c("grey", rep(pal_dolphin, 100))) + guides(col = guide_legend(keywidth = 1, nrow = 6)) + theme(legend.position = "bottom")
+       )
+}
+dev.off()
+
+pdf(file = "pbmc.tSNE.stage.location.pdf", width = 8, height = 8)
+print(TSNEPlot(pbmc, group.by = "Stage", do.label = T, do.return = T) + 
+        scale_color_manual(values = c(rep(pal_dolphin, 100))) + guides(col = guide_legend(keywidth = 1, nrow = 6)) + theme(legend.position = "bottom")
+)
+print(TSNEPlot(pbmc, group.by = "Location", do.label = T, do.return = T) + 
+        scale_color_manual(values = c(rep(pal_dolphin, 100))) + guides(col = guide_legend(keywidth = 1, nrow = 6)) + theme(legend.position = "bottom")
+)
+print(TSNEPlot(pbmc, group.by = "Stage_Batch", do.label = T, do.return = T) + 
+        scale_color_manual(values = c(rep(pal_dolphin, 100))) + guides(col = guide_legend(keywidth = 1, nrow = 6)) + theme(legend.position = "bottom")
+)
+dev.off()
+View(rf.res$samples)
+View(rf.res$newtree)
+##
+rf.res <- buildHierarchy(rf.dir = dir_pre, rf.tree = rf.tree, T, 0.1, 10)
+rf.cluster <- rf.res$samples[,5]
+names(rf.cluster) <- rownames(rf.res$samples)
+rf.cluster.table <- table(rf.cluster)
+cluster.small <- names(which(rf.cluster.table < 10))
+
+rf.cluster[grep("-c",rf.cluster)] <- "---unc"
+rf.cluster[rf.cluster %in% cluster.small] <- "--small"
+
+table(rf.cluster)
+length(table(rf.cluster))
+pbmc <- AddMetaData(pbmc, rf.cluster[rownames(pbmc@meta.data)], col.name = "rf.cluster")
+print(TSNEPlot(pbmc, group.by = "rf.cluster", do.label = T, do.return = T) + 
+        scale_color_manual(values = c("grey", rep(pal_dolphin, 100))) + guides(col = guide_legend(keywidth = 1, nrow = 3)) + theme(legend.position = "bottom")
+)
+# diff
+pbmc <- SetAllIdent(pbmc,id = "rf.cluster")
+pbmc.markers <- FindAllMarkers(pbmc, only.pos = TRUE, min.pct = min.pct, thresh.use = thresh.use, test.use = "roc",latent.vars = NULL)
+#pbmc.markers <- FindAllMarkers(SubsetData(pbmc, ident.use = c(9,10)), only.pos = TRUE, min.pct = min.pct, thresh.use = thresh.use, test.use = "roc",latent.vars = NULL)
+pbmc.markers <- subset(pbmc.markers, myAUC >= 0.7)
+pbmc.markers %>% dplyr::group_by(cluster) %>% dplyr::top_n(10, power) -> top10
+DoHeatmap(pbmc, genes.use = top10$gene, #col.low = "darkblue", col.mid = "white",col.high = "red",
+          use.scaled = T, slim.col.label = TRUE, remove.key = TRUE, cex.col = 0.6)
+bpGOEnrich(pbmc.markers)
+
+phMat <- pbmc@data[top10$gene, 
+                   rownames(pbmc@meta.data)[order(factor(pbmc@meta.data$rf.cluster, levels = levels(top10$cluster)),
+                                            pbmc@meta.data$Location, pbmc@meta.data$Stage_Batch)]]
+phAnn <- pbmc@meta.data[colnames(phMat), c("Stage","Stage_Batch","Location","rf.cluster"),drop=F]
+phAnn$rf.cluster <- factor(phAnn$rf.cluster, levels = levels(top10$cluster))
+phCol <- lapply(phAnn, function(x) {tmp <- sort(unique(x))
+                                    setNames(rep(pal_dolphin,100)[1:length(tmp)], tmp)
+                                   })
+pdf(file = "rf.cluster.deg.pheatmap.pdf", width = 40, height = 30, onefile = F)
+pheatmap::pheatmap(phMat, scale = "none", show_rownames = T, show_colnames = F, cluster_rows = F, cluster_cols = F,
+         annotation_col = phAnn, 
+         annotation_colors = phCol,
+         color = colorpanel(100,"darkblue","white","red"))
+dev.off()
+
+#########
+load("../batch1-8_init.data.Rdata")
+data_annot <- init$cell_annot
+annot <- cbind(data_annot[rownames(rf.res$samples),], rf.cluster = rf.cluster)
+table(annot$rf.cluster, annot$Location)
+table(annot$rf.cluster, annot$Stage)
+
+
+pie_value <- setNames(as.factor(annot$Stage), rownames(annot))
+
+tmp.g <- as.igraph.Node(as.Node(rf.res$newtree, pathName ="path"))
+tmp.g
+plot(tmp.g, vertex.size = 3
+      ,layout = layout.reingold.tilford(tmp.g, root=1)
+      ,vertex.shape = "pie"
+      ,vertex.pie = sapply(tmp.tree$Node, function(x){select_samples <- rf.res$results[[x]]$samples_cluster;return(as.data.frame(table(pie_value[select_samples]))$Freq)}, simplify = F, USE.NAMES = T) 
+      ,vertex.pie.color = list(init$mycolors) 
+      ,vertex.size = sapply(tmp.tree$Node, function(x) {tmp.tree$Node_size[tmp.tree$Node == x]/50}, simplify = F,USE.NAMES = T)
+      ,vertex.label = tmp.tree$Node
+     )
