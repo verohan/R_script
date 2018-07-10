@@ -159,10 +159,43 @@ DimPlot(object, reduction.use = "pca", dim.1 = 1, dim.2 = 2,
   dark.theme = FALSE, plot.order = NULL, cells.highlight = NULL,
   plot.title = NULL, vector.friendly = FALSE, png.file = NULL,
   png.arguments = c(10, 10, 100), ...)
+  
+# cell cycle_tsne
+#pbmc <- AddMetaData(pbmc, metadata = pbmc@meta.data)#(???????有疑问)(待完善)
+pbmc <- SetAllIdent(pbmc, id = "Phase")
+pbmc <- RunTSNE(object = pbmc, seed.use = 1, dims.use = __, do.fast = TRUE, perplexity = __) 
+pdf(file = "~/Rstudio/.../cellcycle_tsne.pdf", width = 9.81, height = 6.40)
+TSNEPlot(object = pbmc, do.label = TRUE)
+dev.off()
+
 
 #
 write.csv(pbmc@dr$tsne@cell.embeddings,file = "")
 save(pbmc,file = "~")
+
+# Findmarkers
+ res0.6_markers <- FindAllMarkers(object = pbmc, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 1)
+ cluster10.markers <- FindMarkers(object = pbmc, ident.1 = , ident.2 = c(2,1,4,6,9), 
+                                 min.pct = 0.25, logfc.threshold = 1, only.pos = TRUE)
+ write.csv(res0.6_markers, file = ".csv")
+ write.csv(cluster10.markers,file = ".csv")
+
+#vinplot
+ VlnPlot(object = pbmc, features.plot = c(""))
+ 
+ #featureplot
+ FeaturePlot(pbmc, features.plot = c(''),  pt.size = 1, cols.use = c("grey", "red"), 
+             reduction.use = "tsne", nCol = NULL, do.return = FALSE)
+ 
+ #展示 cluster
+ for(i in 0:~){
+   pbmc@meta.data$cluster <- ifelse(pbmc@meta.data$res.~ == i,i,"others")
+   pbmc <- SetAllIdent(pbmc, id = "cluster")
+   pdf(file = paste("~/Rstudio/.../clusterplot/",i,"_cluster.pdf",sep = ""),
+       width = 7.10, height = 6.60)
+   print(TSNEPlot(pbmc, do.return=T)+scale_color_manual(values = c("red","grey")))
+   dev.off()
+ }
 
 
 
