@@ -1,1 +1,138 @@
-需要准备：表达矩阵；
+
+setwd("")
+options(stringsAsFactors = F)
+rm(list = ls())
+
+library(Seurat)
+library(RColorBrewer)
+
+### colors
+pal_rainbow <- c("red","orange","yellow","green","cyan","blue","purple")
+bertie.color <- c("#D0B38A", "#A3D171", "#533E88", "#7957A3", "#000000", "#E63325", "#0A8041", "#C5208E", "#3CBDED", "#3B55A3", "#D691BE", "#D23E28", "#6474B6", "#4288C8", "#80A469", "#FFCF3F", "#FBCC9F", "#F06360", "#437BB2", "#A43E40", "#206767", "#779E43", "#258950", "#F7D059", "#ED803B") 
+pal_dolphin <- c("#FF00AE", "#A020F1", "#000000", "#0403E5", "#FF8C01", "#8B0101", "#007502", "#FE0000", "#FFFF01", "#FF99CB", "#4A95FB", "#61FE69", "#9A7A01", "#017F8B", "#05FDFF", "grey")
+pal_cluster <- c("#FF00AE", "#A020F1", "#000000", "#0403E5", "#FF8C01", 
+                 "#8B0101", "#007502", "#FE0000", "#FFFF01", "#FF99CB", 
+                 "#4A95FB", "#61FE69", "#9A7A01", "#017F8B", "#05FDFF",
+                 "#D0B38A", "#533E88", "#D23E28", "#80A469", "#F06360")
+pal_location <- brewer.pal(12, name = "Paired")
+pal_stage <- c("indianred", "steelblue", "blue3")
+
+
+### set up E14 object(可提取过滤后细胞表达矩阵，未标准化)
+E14.data <- read.csv(file = "",header = T, row.names = 1)
+E14 <- CreateSeuratObject(raw.data = E14.data,
+                          min.cells = 0, min.genes =-1, is.expr = 0, 
+                          normalization.method = "LogNormalize", scale.factor = 10000, do.scale = T, do.center = T, 
+                          names.field = 1)
+ncol(E14@data)
+##E14 <- NormalizeData(object = E14, normalization.method = "LogNormalize", 
+                      scale.factor = 10000)
+##E14 <- ScaleData(object=E14, display.progress = F)
+
+### set up E17 object
+E17.data <- read.csv(file = "", header = T, row.names = 1)
+E17 <- CreateSeuratObject(raw.data = E17.data,
+                          min.cells = 0, min.genes =-1, is.expr = 0, 
+                          normalization.method = "LogNormalize", scale.factor = 10000, do.scale = T, do.center = T, 
+                          names.field = 1)
+ncol(E17@data)
+
+##E17 <- NormalizeData(object = E17, normalization.method = "LogNormalize", 
+                     scale.factor = 10000)
+##E17 <- ScaleData(object=E17, display.progress = F)
+
+
+### Detection of variable genes across the single cells
+E14 <- FindVariableGenes(object = E14 , mean.function = ExpMean , dispersion.function = LogVMR, 
+                         x.low.cutoff = 0.05, x.high.cutoff = 3, y.cutoff = 0.5)
+length(x = E14@var.genes)
+
+E17 <- FindVariableGenes(object = E17 , mean.function = ExpMean , dispersion.function = LogVMR, 
+                         x.low.cutoff = 0.05, x.high.cutoff = 3, y.cutoff = 0.25)
+length(x = E17@var.genes)
+
+g.1 <- head(rownames(E14@hvg.info),1000)
+g.2 <- head(rownames(E17@hvg.info),1000)
+
+genes.use <- unique(g.1, g.2)
+genes.use <- intersect(genes.use,rownames(E14@scale.data))
+genes.use <- intersect(genes.use,rownames(E17@scale.data))
+
+#### Perform a canonical correlation analysis (CCA)
+RPC.combined <- RunCCA(object = E14, object2 = E17, genes.use = genes.use,num.cc = 50, 
+                       add.cell.id1 = "E14", add.cell.id2 = "E17")  
+
+### visualize results of CCA plot CC1 versus CC2 and look at a violin plot
+DimPlot(object = RPC.combined,reduction.use = "cca", group.by = "celltype", pt.size = 0.5,do.return = TRUE)
+VlnPlot(RPC.combined, features.plot = "CC1", group.by = "celltype",do.return = TRUE, point.size.use = 0)
+PrintDim(object = RPC.combined, reduction.type = "cca", dims.print = 1:2, genes.print = 10)
+
+p1 <- MetageneBicorPlot(RPC.combined, grouping.var = "celltype", dims.eval = 1:50, 
+                        display.progress = FALSE)
+
+### pdf CCA
+pdf(file = paste(""), width = 9.81,height = 6.94)
+print(DimHeatmap(object = RPC.combined,reduction.type = "cca", cells.use = 500, dim.use = 1:6, 
+                 do.balanced = TRUE))
+dev.off()
+
+###Perform an integrated analysis
+### Align the CCA subspaces
+RPC.combined <- AlignSubspace(RPC.combined, grouping.var = "celltype", dims.align = )
+
+### Cluster the cells 
+RPC.combined <- FindClusters(object = RPC.combined, reduction.type = "cca.aligned", dims.use = , 
+                             resolution = seq(0.2,2,0.2), print.output = 0, save.SNN = TRUE)
+write.csv(RPC.combined@meta_data,file = "~/Rstudio/.../anno.csv")
+
+# t-SNE and Clustering
+#设置离散度（perplexity）,设置resolution = 0.2~1.8
+
+for(i in seq(20,200,10)){
+  RPC.combined <- SetAllIdent(RPC.combined, id = "res.0.6")
+  RPC.combined <- RunTSNE(object = RPC.combined, reduction.use = "cca.aligned",
+                         do.fast = TRUE, dims.use = , perplexity = i)
+  pdf(file = paste("~/Rstudio/.../perplexity/per",i,".pdf",sep = ""), width = 9.81,height = 6.94,onefile = F)
+  print(TSNEPlot(object = RPC.combined, do.label = TRUE, do.return=T, color.use = ) + labs(title=i))
+  dev.off()
+}
+
+### Resolution=0.2, 0.4, 0.6, 0.8, 1.0, 1.2
+for(i in seq(0.2,0.8,0.2)){
+  RPC.combined <- SetAllIdent(RPC.combined,id = paste("res.",i,sep = ""))
+  RPC.combined <- RunTSNE(object = RPC.combined,reduction.use = "cca.aligned", 
+                          do.fast = TRUE, dims.use =  , perplexity = )
+  pdf(file = paste("~/Rstudio/.../tsne/res.",i,".pdf",sep = ""), 
+      width = 9.81,height = 6.94)
+  print(TSNEPlot(object = RPC.combined, do.label = TRUE, do.return = T,color.use = ) + labs(title = i))
+  dev.off()
+}
+
+for(i in seq(1,1.8,0.2)){
+  RPC.combined <- SetAllIdent(RPC.combined,id = paste("res.",i,sep = ""))
+  RPC.combined <- RunTSNE(object = RPC.combined,reduction.use = "cca.aligned", 
+                          do.fast = TRUE, dims.use =  , perplexity = )
+  pdf(file = paste("~/Rstudio/.../tsne/res.",i,".pdf",sep = ""), 
+      width = 9.81,height = 6.94)
+  print(TSNEPlot(object = RPC.combined, do.label = TRUE, do.return = T,color.use = ) + labs(title = i))
+  dev.off()
+}
+
+#确定 resolution
+RPC.combined<- SetAllIdent(RPC.combined,id = "res.")
+p2 <- TSNEPlot(object = RPC.combined, do.label = TRUE, do.return = T, colors.use = )+ labs(title = "res.")
+
+RPC.combined <- SetAllIdent(RPC.combined,id = "celltype")
+p3 <- TSNEPlot(RPC.combined, do.return = T, group.by = "celltype")
+
+plot_grid(p2,p3)
+
+#feature
+FeaturePlot(RPC.combined,features.plot = c(""),cols.use = c("grey","red"),nCol = )
+FeatureHeatmap(RPC.combined,features.plot = "",group.by = "celltype", pt.size = 0.9, key.position = "top") 
+
+
+write.csv(RPC.combined@dr$tsne@cell.embeddings,file = "")
+save(RPC.combined,file = "~/Rstudio/.../.RData")
+
+#findermarker  #展示 cluster(见 seurat（10X）)
