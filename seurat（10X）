@@ -79,7 +79,7 @@ pbmc <- FindVariableGenes(object = pbmc , mean.function = ExpMean , dispersion.f
 length(x = pbmc@var.genes)
 
 #Scaling the data and removing unwanted sources of variation
-pbmc <- ScaleData(object=pbmc）#vars.to.regress = c("nUMI" , "percent.mito")#(vars.to.regress,对 UMI 范围不是特别大，不用执行回归)
+pbmc <- ScaleData(object=pbmc)#vars.to.regress = c("nUMI" , "percent.mito")#(vars.to.regress,对 UMI 范围不是特别大，不用执行回归)
 
 #Perform linear dimensional reduction
 pbmc <- RunPCA(pbmc, pc.genes = pbmc@var.genes, pcs.compute = 50, do.print = TRUE, 
