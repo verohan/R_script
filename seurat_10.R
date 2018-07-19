@@ -29,7 +29,7 @@ g1s.genes <- as.character(na.omit(cell_cycle$G1/S))
 g2m.genes <- as.character(na.omit(cell_cycle$G2/M))
 
 #更改大小写(human不用此步)
- g1s.genes <- tolower(g1s.genes)
+g1s.genes <- tolower(g1s.genes)
 g2m.genes <- tolower(g2m.genes)
 
 #首字母大写(human不用此步)
@@ -46,6 +46,20 @@ pbmc <- CreateSeuratObject(raw.data = data,min.cells = 3,min.genes = 200)#()
 plot(pbmc@meta.data$nUMI, pbmc@meta.data$nGene, 
      xlab = "nUMI - the number of transcripts", 
      ylab = "nGene - the number of genes")
+
+#判断可能会过滤细胞类型，是否为 needed 细胞
+pbmc@meta.data$filt_cells <- ifelse(pbmc@meta.data$nGene < 2500,"filt_cells","others")
+pbmc <- NormalizeData(pbmc,scale.factor = 10000)
+pbmc <- ScaleData(pbmc)
+pbmc <- FindVariableGenes(object = pbmc , mean.function = ExpMean , dispersion.function = LogVMR, 
+                          x.low.cutoff = 0.0125, x.high.cutoff = 3, y.cutoff = 0.5)
+length(x = pbmc@var.genes)
+pbmc <- RunPCA(pbmc, pc.genes = pbmc@var.genes, pcs.compute = 30, do.print = TRUE, 
+               pcs.print = 1:10, genes.print = 20)
+PCAPlot(pbmc, dim.1 = 1, dim.2 = 2)
+PCAPlot(pbmc, dim.1 = 1, dim.2 = 2, group.by = "filt_cells")
+FeaturePlot(pbmc, features.plot = c("GYPA", "HBB", "GATA1", "KLF1"), 
+            reduction.use = "pca", cols.use = c("grey","red"))
 
 # evaluate threshold for percent.mito
 mito.genes <- grep(pattern = "^MT-", x = rownames(x = pbmc@data), 
