@@ -41,59 +41,75 @@ g2m.genes <- capitalize(g2m.genes)
 data <- Read10X(data.dir="~/Rstudio/...")
 ncol(as.matrix(data))
 
-pbmc <- CreateSeuratObject(raw.data = data,min.cells = 3,min.genes = 200)#()
+pbmc <- CreateSeuratObject(raw.data = data,min.cells = 0,min.genes = -1)
+pbmc_raw <- pbmc#备份应用于保存过滤后的细胞未 normalize的 data
 
+par(mfrow = c(1,1))#设置窗口#（针对 Error:figure margins too large）
+             
 plot(pbmc@meta.data$nUMI, pbmc@meta.data$nGene, 
      xlab = "nUMI - the number of transcripts", 
      ylab = "nGene - the number of genes")
 
-#判断可能会过滤细胞类型，是否为 needed 细胞
-pbmc@meta.data$filt_cells <- ifelse(pbmc@meta.data$nGene < 2500,"filt_cells","others")
+#判断可能会过滤细胞类型，是否为 needed 细胞             
+pbmc@meta.data$filt_cells_nGene <- ifelse(pbmc@meta.data$nGene < 2500,"filt_cells_nGene","others")
+pbmc@meta.data$filt_cells_nUMI <- ifelse(pbmc@meta.data$nUMI < 10000,"filt_cells_nUMI","others")             
+
+#unfilt cells_PCA 查看细胞判断其低质量 or 独立群体细胞             
 pbmc <- NormalizeData(pbmc,scale.factor = 10000)
 pbmc <- ScaleData(pbmc)
+#(对于 scale.factor 的选择：应选择最接近其 nUMI 中位数的数量级)，normalize 后的文件覆盖原 data 表达矩阵；
+#seurat中Normolization（值为 log（2）与手动取 log，是不一样的，手动取 log 可能会在后续寻找 df markers 中其 logFC 值可能会被放大；）
+#vars.to.regress = c("nUMI" , "percent.mito")#(vars.to.regress,对 UMI 范围不是特别大，不用执行回归) 
+             
 pbmc <- FindVariableGenes(object = pbmc , mean.function = ExpMean , dispersion.function = LogVMR, 
                           x.low.cutoff = 0.0125, x.high.cutoff = 3, y.cutoff = 0.5)
 length(x = pbmc@var.genes)
 pbmc <- RunPCA(pbmc, pc.genes = pbmc@var.genes, pcs.compute = 30, do.print = TRUE, 
                pcs.print = 1:10, genes.print = 20)
 PCAPlot(pbmc, dim.1 = 1, dim.2 = 2)
-PCAPlot(pbmc, dim.1 = 1, dim.2 = 2, group.by = "filt_cells")
+PCAPlot(pbmc, dim.1 = 1, dim.2 = 2, group.by = "filt_cells_nGene")
+PCAPlot(pbmc, dim.1 = 1, dim.2 = 2, group.by = "filt_cells_nUMI")
 FeaturePlot(pbmc, features.plot = c("GYPA", "HBB", "GATA1", "KLF1"), 
             reduction.use = "pca", cols.use = c("grey","red"))
 
-# evaluate threshold for percent.mito
+# filter cells
+
+##确定主成分明确不需要的群体：如根据 PC1 >20过滤细胞，及mito >5%
+##
+pbmc@meta.data$PC1 <- pbmc@dr$pca@cell.embeddings[,1]
+View(pbmc_raw@meta.data)             
+
+## evaluate threshold for percent.mito
 mito.genes <- grep(pattern = "^MT-", x = rownames(x = pbmc@data), 
                    value = TRUE)
 percent.mito <- Matrix::colSums(pbmc@raw.data[mito.genes, ]) / 
   Matrix::colSums(pbmc@raw.data)
 pbmc <- AddMetaData(object = pbmc, metadata = percent.mito, 
                     col.name = "percent.mito")
-VlnPlot(object = pbmc, 
-        features.plot = c("nGene", "nUMI", "percent.mito"), 
-        nCol = 3)
+VlnPlot(object = pbmc, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3)
+             
+pbmc <- FilterCells(object = pbmc, subset.names = "PC1", high.thresholds = 20)
+pbmc <- FilterCells(object = pbmc, subset.names = "percent.mito", high.thresholds = 0.05)
+ncol(pbmc@data)
 
-# filter cells
+## 仅根据细胞 nUMI，nGene，mito过滤
 pbmc <- FilterCells(object = pbmc, 
                     subset.names = c("nGene",'nUMI', "percent.mito"), 
                     low.thresholds = c(1000, 4000,-Inf), 
                     high.thresholds = c(40000, 60000,0.1))
 ncol(pbmc@data)
 
-write.csv(pbmc@data, file = "~/Rstudio/... .csv")  #此为保存细胞过滤后表达矩阵
+## save filt_cells
+filt_cells <- colnames(pbmc@data)
+filt_cells_raw <- pbmc_raw@data[,filt_cells]
+write.csv(as.matrix(filt_cells_raw), file = "~/Rstudio/... .csv")  #此为保存细胞过滤后表达矩阵
+
 pbmc_copy <- pbmc #备份
-
-pbmc <- NormalizeData(object = pbmc, normalization.method = "LogNormalize", 
-                      scale.factor = 10000)
-#(对于 scale.factor 的选择：应选择最接近其 nUMI 中位数的数量级)，normalize 后的文件覆盖原 data 表达矩阵；
-#seurat中Normolization（值为 log（2）与手动取 log，是不一样的，手动取 log 可能会在后续寻找 df markers 中其 logFC 值可能会被放大；）
-
-#Detection of variable genes across the single cells
+             
+## filt_cells, Detection of variable genes across the single cells
 pbmc <- FindVariableGenes(object = pbmc , mean.function = ExpMean , dispersion.function = LogVMR, 
                           x.low.cutoff = 0.0125, x.high.cutoff = 3, y.cutoff = 0.5)
 length(x = pbmc@var.genes)
-
-#Scaling the data and removing unwanted sources of variation
-pbmc <- ScaleData(object=pbmc)#vars.to.regress = c("nUMI" , "percent.mito")#(vars.to.regress,对 UMI 范围不是特别大，不用执行回归)
 
 #Perform linear dimensional reduction
 pbmc <- RunPCA(pbmc, pc.genes = pbmc@var.genes, pcs.compute = 50, do.print = TRUE, 
@@ -105,17 +121,15 @@ head(x = pbmc@meta.data)
 
 #Running a PCA on cell cycle genes reveals, unsurprisingly, that cells separate entirely by phase
 pbmc <- RunPCA(object = pbmc, pc.genes = c(g1s.genes, g2m.genes), do.print = FALSE)
-VizPCA(object = pbmc, pcs.use = 1:2)
-PCAPlot(pbmc, dim.1 = 1, dim.2 = 2)#(主成分展示)
+PCAPlot(pbmc, dim.1 = 1, dim.2 = 2)
 
 #Regress out cell cycle scores during data scaling，if needed;
 pbmc <- ScaleData(object = pbmc, vars.to.regress = c("S.Score", "G2M.Score"), display.progress = FALSE)
 
+#pca & var.genes, 看 pca中是否包含周期相关基因
 pbmc <- RunPCA(object = pbmc, pc.genes = pbmc@var.genes, pcs.compute = 50, do.print = TRUE, pcs.print = 1:5, genes.print = 30)
 
 pbmc <- RunPCA(object = pbmc, pc.genes = c(s.genes, g2m.genes), do.print = FALSE)
-
-VizPCA(object = pbmc, pcs.use = 1:2)
 PCAPlot(pbmc, dim.1 = 1, dim.2 = 2)
 
 
@@ -134,7 +148,8 @@ JackStrawPlot(object = pbmc, PCs = 1:50)
 PCElbowPlot(object = pbmc, num.pc = 50)
 
 #save PCA
-pbmc <- ProjectPCA(pbmc,do.print = FALSE)
+#pbmc <- ProjectPCA(pbmc,do.print = FALSE)
+             
 pdf(file = "~/Rstudio/.../pca/pc1:6.pdf", width = 9.81, height = 6.49)
 PCHeatmap(object = pbmc, pc.use = 1:6, cells.use = 500, do.balanced = TRUE, label.columns = FALSE, use.full = FALSE)
 dev.off()
@@ -145,8 +160,9 @@ pbmc <- FindClusters(object = pbmc, reduction.type = "pca", dims.use = __,
 write.csv(pbmc@meta_data,file = "~/Rstudio/.../anno.csv")
 
 #设置离散度（perplexity）,选择较好的呈现图，设置resolution = 0.2,0.4,0.6,0.8,1.0,1.2
+table(pbmc@meta.data$res)##方便选择 res.?
 for(i in seq(20,200,10)){
-  pbmc <- SetAllIdent(pbmc, id = "res.0.4")
+  pbmc <- SetAllIdent(pbmc, id = "res.0.6")
   pbmc<- RunTSNE(object = pbmc, do.fast = TRUE, dims.use = __, perplexity = i)
   pdf(file = paste("~/Rstudio/.../perplexity/per",i,".pdf",sep = ""), 
       width = 9.81,height = 6.94,onefile = F)
