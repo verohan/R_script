@@ -160,39 +160,41 @@ pbmc <- FindClusters(object = pbmc, reduction.type = "pca", dims.use = __,
 write.csv(pbmc@meta_data,file = "~/Rstudio/.../anno.csv")
 
 #设置离散度（perplexity）,选择较好的呈现图，设置resolution = 0.2,0.4,0.6,0.8,1.0,1.2
+
 table(pbmc@meta.data$res)##方便选择 res.?
+             
 for(i in seq(20,200,10)){
   pbmc <- SetAllIdent(pbmc, id = "res.0.6")
   pbmc<- RunTSNE(object = pbmc, do.fast = TRUE, dims.use = __, perplexity = i)
   pdf(file = paste("~/Rstudio/.../perplexity/per",i,".pdf",sep = ""), 
       width = 9.81,height = 6.94,onefile = F)
-  print(TSNEPlot(object = pbmc, do.label = TRUE, do.return=T) + labs(title=i))
+  print(TSNEPlot(object = pbmc, do.label = TRUE, do.return=T, color.use = , pt.size = ) + labs(title=i))
   dev.off()
 }
 
-#Resolution=0.2, 0.4, 0.6, 0.8, 1.0, 1.2
+pbmc <- RunTSNE(object = pbmc, do.fast = TRUE, dims.use = __, perplexity = __)
+             
+##Resolution = 0.2,0.4, 0.6, 0.8, 1.0, 1.2
 for(i in seq(0.2,0.8,0.2)){
   pbmc <- SetAllIdent(pbmc,id = paste("res.",i,sep = ""))
   pbmc <- RunTSNE(object = pbmc, do.fast = TRUE, dims.use = __, perplexity = __)
   pdf(file = paste("~/Rstudio/.../tsne/res.",i,".pdf",sep = ""), 
       width = 9.81,height = 6.94)
-  print(TSNEPlot(object = pbmc, do.label = TRUE, do.return = T) + labs(title = i))
+  print(TSNEPlot(object = pbmc, do.label = TRUE, do.return = T, color.use = , pt.size = ) + labs(title = i))
   dev.off()
 }
 
 for(i in seq(1,1.8,0.2)){
-  pbmc <- SetAllIdent(pbmc,id = paste("res.",i,sep = ""))
-  pbmc <- RunTSNE(object = pbmc, do.fast = TRUE, dims.use = __, perplexity = __)
+  pbmc <- SetAllIdent(pbmc,id = paste("res.",i,sep = "")
   pdf(file = paste("~/Rstudio/.../tsne/res.",i,".pdf",sep = ""), 
       width = 9.81,height = 6.94)
-  print(TSNEPlot(object = pbmc, do.label = TRUE, do.return = T) + labs(title = i))
+  print(TSNEPlot(object = pbmc, do.label = TRUE, do.return = T,color.use = , pt.size = ) + labs(title = i))
   dev.off()
 }
 
 #确定 resolution
 pbmc<- SetAllIdent(pbmc,id = "__")
-pbmc <- RunTSNE(object = pbmc, do.fast = TRUE, dims.use = __, perplexity = __)
-TSNEPlot(object = pbmc, do.label = TRUE, do.return = T, color.use = __) + labs(title = "__")
+TSNEPlot(object = pbmc, do.label = TRUE, do.return = T, color.use = __, pt.size = ) + labs(title = "__")
 DimPlot(object, reduction.use = "pca", dim.1 = 1, dim.2 = 2,
   cells.use = NULL, pt.size = 1, do.return = FALSE, do.bare = FALSE,
   cols.use = NULL, group.by = "ident", pt.shape = NULL,
@@ -212,7 +214,7 @@ dev.off()
 
 
 #
-write.csv(pbmc@dr$tsne@cell.embeddings,file = "")
+write.csv(pbmc@dr$tsne@cell.embeddings,file = "/tsne.csv")
 save(pbmc,file = "~")
 
 # Findmarkers
