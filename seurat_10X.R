@@ -42,7 +42,6 @@ data <- Read10X(data.dir="~/Rstudio/...")
 ncol(as.matrix(data))
 
 pbmc <- CreateSeuratObject(raw.data = data,min.cells = 0,min.genes = -1)
-pbmc_raw <- pbmc#备份应用于保存过滤后的细胞未 normalize的 data
 
 par(mfrow = c(1,1))#设置窗口#（针对 Error:figure margins too large）
              
@@ -101,8 +100,8 @@ ncol(pbmc@data)
 
 ## save filt_cells
 filt_cells <- colnames(pbmc@data)
-filt_cells_raw <- pbmc_raw@data[,filt_cells]
-write.csv(as.matrix(filt_cells_raw), file = "~/Rstudio/... .csv")  #此为保存细胞过滤后表达矩阵
+filt_cells_raw <- pbmc@raw.data[,filt_cells]
+write.csv(as.matrix(filt_cells_raw), file = "~/Rstudio/.../filt_cells_raw.csv")  #此为保存细胞过滤后未normalise表达矩阵
 
 pbmc_copy <- pbmc #备份
              
