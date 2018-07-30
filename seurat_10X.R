@@ -51,7 +51,11 @@ plot(pbmc@meta.data$nUMI, pbmc@meta.data$nGene,
 
 #判断可能会过滤细胞类型，是否为 needed 细胞             
 pbmc@meta.data$filt_cells_nGene <- ifelse(pbmc@meta.data$nGene < 2500,"filt_cells_nGene","others")
-pbmc@meta.data$filt_cells_nUMI <- ifelse(pbmc@meta.data$nUMI < 10000,"filt_cells_nUMI","others")             
+pbmc@meta.data$filt_cells_nUMI <- ifelse(pbmc@meta.data$nUMI < 10000,"filt_cells_nUMI","others")  
+
+dblets <- colnames(pbmc@raw.data)[apply(pbmc@raw.data[c('Kdm5d','Eif2s3y','Gm29650','Uty','Ddx3y'),],2,
+                                        function(x) any(x>0)) & pbmc@raw.data["Xist",]>0]###可能为 doublets 细胞
+pbmc@meta.data$doublets <- ifelse(rownames(pbmc@meta.data) %in% dblets,'doublet','singlet')
 
 #unfilt cells_PCA 查看细胞判断其低质量 or 独立群体细胞             
 pbmc <- NormalizeData(pbmc,scale.factor = 10000)
