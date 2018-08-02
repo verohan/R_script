@@ -25,8 +25,8 @@ cell_cycle <- as.data.frame(read_excel("~/Rstudio/cell cycle/cell cycle list.xls
                                        sheet = 1))
 
 #segregate this list into markers of G1/S phase, G2/M phase and markers of S phase
-g1s.genes <- as.character(na.omit(cell_cycle$G1/S))
-g2m.genes <- as.character(na.omit(cell_cycle$G2/M))
+g1s.genes <- as.character(na.omit(cell_cycle$`G1/S`),na.omit(cell_cycle$S))
+g2m.genes <- as.character(na.omit(cell_cycle$`G2/M`,na.omit(cell_cycle$M)))
 
 #更改大小写(human不用此步)
 g1s.genes <- tolower(g1s.genes)
@@ -73,7 +73,7 @@ PCAPlot(pbmc, dim.1 = 1, dim.2 = 2)
 PCAPlot(pbmc, dim.1 = 1, dim.2 = 2, group.by = "filt_cells_nGene")
 PCAPlot(pbmc, dim.1 = 1, dim.2 = 2, group.by = "filt_cells_nUMI")
 FeaturePlot(pbmc, features.plot = c("GYPA", "HBB", "GATA1", "KLF1"), 
-            reduction.use = "pca", cols.use = c("grey","red"))
+            reduction.use = "pca", cols.use = c("grey","red"))###红细胞
 
 # filter cells
 
@@ -93,7 +93,9 @@ VlnPlot(object = pbmc, features.plot = c("nGene", "nUMI", "percent.mito"), nCol 
              
 pbmc <- FilterCells(object = pbmc, subset.names = "PC1", high.thresholds = 20)
 pbmc <- FilterCells(object = pbmc, subset.names = "percent.mito", high.thresholds = 0.05)
+pbmc <- SubsetData(pbmc,cells.use = setdiff(colnames(pbmc@raw.data),dblets))###去掉 doublets
 ncol(pbmc@data)
+
 
 ## 仅根据细胞 nUMI，nGene，mito过滤
 pbmc <- FilterCells(object = pbmc, 
@@ -107,7 +109,6 @@ filt_cells <- colnames(pbmc@data)
 filt_cells_raw <- pbmc@raw.data[,filt_cells]
 write.csv(as.matrix(filt_cells_raw), file = "~/Rstudio/.../filt_cells_raw.csv")  #此为保存细胞过滤后未normalise表达矩阵
 
-pbmc_copy <- pbmc #备份
              
 ## filt_cells, Detection of variable genes across the single cells
 pbmc <- FindVariableGenes(object = pbmc , mean.function = ExpMean , dispersion.function = LogVMR, 
@@ -130,27 +131,28 @@ PCAPlot(pbmc, dim.1 = 1, dim.2 = 2)
 pbmc <- ScaleData(object = pbmc, vars.to.regress = c("S.Score", "G2M.Score"), display.progress = FALSE)
 
 #pca & var.genes, 看 pca中是否包含周期相关基因
-pbmc <- RunPCA(object = pbmc, pc.genes = pbmc@var.genes, pcs.compute = 50, do.print = TRUE, pcs.print = 1:5, genes.print = 30)
+pbmc <- RunPCA(object = pbmc, pc.genes = pbmc@var.genes, pcs.compute = 50, do.print = TRUE, pcs.print = 1:10, genes.print = 30)
 
 pbmc <- RunPCA(object = pbmc, pc.genes = c(s.genes, g2m.genes), do.print = FALSE)
 PCAPlot(pbmc, dim.1 = 1, dim.2 = 2)
 
 
 #Perform linear dimensional reduction
-pbmc <- RunPCA(pbmc, pc.genes = pbmc@var.genes, pcs.compute = 30 ,do.print = TRUE, pcs.print = 1:10, genes.print = 20) 
+pbmc <- RunPCA(pbmc, pc.genes = pbmc@var.genes, pcs.compute = 50 ,do.print = TRUE, pcs.print = 1:10, genes.print = 20) 
 
 
 # Visualize the distribution of cell cycle markers across
-RidgePlot(object = pbmc, features.plot = c("Pcna", "Top2a", "Mcm6", "Mki67"), 
-          nCol = 2)
+#RidgePlot(object = pbmc, features.plot = c("Pcna", "Top2a", "Mcm6", "Mki67"), nCol = 2)
 
 #Determine statistically significant principal components
-pbmc <- JackStraw(object = pbmc, num.replicate = 100, display.progress = FALSE)
-JackStrawPlot(object = pbmc, PCs = 1:50)
+                                        
+#pbmc <- JackStraw(object = pbmc, num.replicate = 100, display.progress = FALSE)
+#JackStrawPlot(object = pbmc, PCs = 1:50)
 
 PCElbowPlot(object = pbmc, num.pc = 50)
 
 #save PCA
+
 #pbmc <- ProjectPCA(pbmc,do.print = FALSE)
              
 pdf(file = "~/Rstudio/.../pca/pc1:6.pdf", width = 9.81, height = 6.49)
@@ -158,9 +160,20 @@ PCHeatmap(object = pbmc, pc.use = 1:6, cells.use = 500, do.balanced = TRUE, labe
 dev.off()
 
 #Cluster the cells 
-pbmc <- FindClusters(object = pbmc, reduction.type = "pca", dims.use = __, 
+##根据 pca 选择1:10,or 1:15,分别分群及 runtsne
+pbmc_pc15 <- pbmc
+pbmc_pc10 <- pbmc
+                                        
+pbmc_ <- FindClusters(object = pbmc_, reduction.type = "pca", dims.use = __, 
                      resolution = seq(0.2,2,0.2), print.output = 0, save.SNN = TRUE)
-write.csv(pbmc@meta_data,file = "~/Rstudio/.../anno.csv")
+                                        
+###Tsneplot PC15 及PC10
+pbmc_pc10 <- SetAllIdent(pbmc_pc10,id = "res.0.8")
+pbmc_pc10 <-  RunTSNE(pbmc_pc10,do.fast = T,dims.use = 1:10)
+TSNEPlot(pbmc_pc10,do.lable = T,do.return = T,colors.use = bertie.color) + labs(title = "tsne_pc1:10")
+
+##确定 pca
+pbmc <- pbmc_
 
 #设置离散度（perplexity）,选择较好的呈现图，设置resolution = 0.2,0.4,0.6,0.8,1.0,1.2
 
@@ -170,7 +183,7 @@ for(i in seq(20,200,10)){
   pbmc <- SetAllIdent(pbmc, id = "res.0.6")
   pbmc<- RunTSNE(object = pbmc, do.fast = TRUE, dims.use = __, perplexity = i)
   pdf(file = paste("~/Rstudio/.../perplexity/per",i,".pdf",sep = ""), 
-      width = 9.81,height = 6.94,onefile = F)
+      width = 9.81,height = 6.94）
   print(TSNEPlot(object = pbmc, do.label = TRUE, do.return=T, color.use = , pt.size = ) + labs(title=i))
   dev.off()
 }
@@ -180,7 +193,6 @@ pbmc <- RunTSNE(object = pbmc, do.fast = TRUE, dims.use = __, perplexity = __)
 ##Resolution = 0.2,0.4, 0.6, 0.8, 1.0, 1.2
 for(i in seq(0.2,0.8,0.2)){
   pbmc <- SetAllIdent(pbmc,id = paste("res.",i,sep = ""))
-  pbmc <- RunTSNE(object = pbmc, do.fast = TRUE, dims.use = __, perplexity = __)
   pdf(file = paste("~/Rstudio/.../tsne/res.",i,".pdf",sep = ""), 
       width = 9.81,height = 6.94)
   print(TSNEPlot(object = pbmc, do.label = TRUE, do.return = T, color.use = , pt.size = ) + labs(title = i))
@@ -208,17 +220,16 @@ DimPlot(object, reduction.use = "pca", dim.1 = 1, dim.2 = 2,
   png.arguments = c(10, 10, 100), ...)
   
 # cell cycle_tsne
-#pbmc <- AddMetaData(pbmc, metadata = pbmc@meta.data)#(???????有疑问)(待完善)
 pbmc <- SetAllIdent(pbmc, id = "Phase")
 pbmc <- RunTSNE(object = pbmc, seed.use = 1, dims.use = __, do.fast = TRUE, perplexity = __) 
-pdf(file = "~/Rstudio/.../cellcycle_tsne.pdf", width = 9.81, height = 6.40)
-TSNEPlot(object = pbmc, do.label = TRUE)
-dev.off()
+TSNEPlot(object = pbmc, do.label = F)
 
-
+##
+pbmc_ _  <- pbmc  ###保存 pbmc_pc_sample
 #
-write.csv(pbmc@dr$tsne@cell.embeddings,file = "/tsne.csv")
-save(pbmc,file = "~")
+write.csv(pbmc_@meta.data, file = '/data2/hehan/Rstudio/.../日期_anno_sample名.csv')
+write.csv(pbmc_@dr$tsne@cell.embeddings,file = "/data2/hehan/Rstudio/.../日期_tsne_cycle_regressout_sample名.csv")
+save(pbmc_,file = "/data2/hehan/Rstudio/.../日期_seurat_cycle_regressout_sample名.RData")
 
 # Findmarkers
 res0.6_markers <- FindAllMarkers(object = pbmc, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 1)
@@ -254,7 +265,6 @@ TSNEPlot(object = pbmc, do.label = TRUE, pt.size = ...)
 
  
  
-
 
 
 
