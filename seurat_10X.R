@@ -39,7 +39,8 @@ g2m.genes <- capitalize(g2m.genes)
 
 #读入10X/mm10
 data <- Read10X(data.dir="~/Rstudio/...")
-ncol(as.matrix(data))
+data <- data[rowMeans(as.matrix(data) > 0),]####过滤 gene 表达为0的 gene
+dim（data)
 
 pbmc <- CreateSeuratObject(raw.data = data,min.cells = 0,min.genes = -1)
 
