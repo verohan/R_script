@@ -72,10 +72,11 @@ filt_cells <- read.csv(file = '')
 pbmc <- CreateSeuratObject(raw.data = data,min.cells = 0,min.genes = -1)
 # DoubletDetect 标记 doublet
 pbmc@meta.data$dblets_1 <- filt_cells$V1
-pbmc@meta.data$dblets_1 <- ifelse(pbmc@meta.data$doublets == 1,'doublet','others')
-doublets_2 <- colnames(pbmc@raw.data)[apply(pbmc@raw.data[c('Kdm5d','Eif2s3y','Gm29650','Uty','Ddx3y'),],2,
-                                            function(x) any(x>0)) & pbmc@raw.data["Xist",]>0]
-
+pbmc@meta.data$dblets_1 <- ifelse(pbmc@meta.data$dblet_1 == 1,'doublet','singlet')
+doublets_1 <- rownames(pbmc@meta.data[,dblets_1 == 1])
+doublets_2 <- colnames(pbmc@raw.data)[apply(pbmc@raw.data[c('Kdm5d','Eif2s3y','Gm29650','Uty','Ddx3y'),],2,function(x) any(x>0)) & pbmc@raw.data["Xist",]>0]
+pbmc@meta.data$dblets_2 <- ifelse(rownames(pbmc@meta.data) %in% doublests_2,'doublet','singlet')
+doublets <- union(doublets_1,doublet_2)
 
 #过滤 gene 表达为0的 gene
 pbmc@raw.data <- as.matrix(pbmc@raw.data)[rowMeans(as.matrix(pbmc@raw.data))>0,]
