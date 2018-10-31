@@ -1,8 +1,6 @@
-
 setwd()
 options(stringsAsFactors = F)
-rm（list = ls(()）
-
+rm（list = ls(())
 ##library
 library(Seurat)
 library(scater)
@@ -11,41 +9,82 @@ library(readxl)
 
 ##colors
 pal_rainbow <- c("red","orange","yellow","green","cyan","blue","purple")
-bertie.color <- c("#D0B38A", "#A3D171", "#533E88", "#7957A3", "#000000", "#E63325", "#0A8041", "#C5208E", "#3CBDED", "#3B55A3", "#D691BE", "#D23E28", "#6474B6", "#4288C8", "#80A469", "#FFCF3F", "#FBCC9F", "#F06360", "#437BB2", "#A43E40", "#206767", "#779E43", "#258950", "#F7D059", "#ED803B") 
-pal_dolphin <- c("#FF00AE", "#A020F1", "#000000", "#0403E5", "#FF8C01", "#8B0101", "#007502", "#FE0000", "#FFFF01", "#FF99CB", "#4A95FB", "#61FE69", "#9A7A01", "#017F8B", "#05FDFF", "grey")
+bertie.color <- c("#D0B38A", "#A3D171", "#533E88", "#7957A3", "#000000", 
+                  "#E63325", "#0A8041", "#C5208E", "#3CBDED", "#3B55A3", 
+                  "#D691BE", "#D23E28", "#6474B6", "#4288C8", "#80A469", 
+                  "#FFCF3F", "#FBCC9F", "#F06360", "#437BB2", "#A43E40", 
+                  "#206767", "#779E43", "#258950", "#F7D059", "#ED803B") ##25
+pal_dolphin <- c("#FF00AE", "#A020F1", "#000000", "#0403E5", "#FF8C01", 
+                 "#8B0101", "#007502", "#FE0000", "#FFFF01", "#FF99CB", 
+                 "#4A95FB", "#61FE69", "#9A7A01", "#017F8B", "#05FDFF", "grey")##15
 pal_cluster <- c("#FF00AE", "#A020F1", "#000000", "#0403E5", "#FF8C01", 
                  "#8B0101", "#007502", "#FE0000", "#FFFF01", "#FF99CB", 
                  "#4A95FB", "#61FE69", "#9A7A01", "#017F8B", "#05FDFF",
-                 "#D0B38A", "#533E88", "#D23E28", "#80A469", "#F06360")
+                 "#D0B38A", "#533E88", "#D23E28", "#80A469", "#F06360")##20
 pal_location <- brewer.pal(12, name = "Paired")
 pal_stage <- c("indianred", "steelblue", "blue3")
+col_hh <- c('#9DC8C8','#D1B6E1','#519D9E','#E53A40',
+            '#30A9DE','#F17F42','#566270','#8CD790',
+            '#2EC4B6', '#44633F','#D81159','#4F86C6',
+            '#AACD6E','#F16B6F','#E3E36A','#D8E6E7',
+            '#D09E88','#7200da','#f100e5','#005f6b')##25
 
 #引入细胞周期 marker（g1$s,g2$m）
-cell_cycle <- as.data.frame(read_excel("~/Rstudio/cell cycle/cell cycle list.xlsx",
-                                       sheet = 1))
-
+#
+cell_cycle <- as.data.frame(read_excel("~/Rstudio/cell cycle/cell cycle list.xlsx",sheet = 1))
 #segregate this list into markers of G1/S phase, G2/M phase and markers of S phase
 g1s.genes <- as.character(na.omit(cell_cycle$`G1/S`),na.omit(cell_cycle$S))
 g2m.genes <- as.character(na.omit(cell_cycle$`G2/M`,na.omit(cell_cycle$M)))
-
 #更改大小写(human不用此步)
 g1s.genes <- tolower(g1s.genes)
 g2m.genes <- tolower(g2m.genes)
-
 #首字母大写(human不用此步)
 library(Hmisc)
 g1s.genes <- capitalize(g1s.genes)
 g2m.genes <- capitalize(g2m.genes)
 
+##
+geneset <- list()
+geneset$g1s <- c("Mcm5","Pcna","Tyms","Fen1","Mcm2","Mcm4","Rrm1","Ung","Gins2",
+                 "Mcm6","Cdca7","Dtl","Prim1","Uhrf1","Cenpu","Hells","Rfc2",
+                 "Rpa2","Nasp","Rad51ap1","Gmnn","Wdr76","Slbp","Ccne2","Ubr7",
+                 "Pold3","Msh2","Atad2","Rad51","Rrm2","Cdc45","Cdc6","Exo1",
+                 "Tipin","Dscc1","Blm","Casp8ap2","Usp1","Clspn","Pola1",
+                 "Chaf1b","Brip1","E2f8")
+
+geneset$g2m <- c("Hmgb2","Cdk1","Nusap1","Ube2c","Birc5","Tpx2","Top2a","Ndc80",
+                 "Cks2","Nuf2","Cks1b","Mki67","Tmpo","Cenpf","Tacc3","Fam64a",
+                 "Smc4","Ccnb2","Ckap2l","Ckap2","Aurkb","Bub1","Kif11","Anp32e",
+                 "Tubb4b","Gtse1","Kif20b","Hjurp","Cdca3","Hn1","Cdc20","Ttk",
+                 "Cdc25c","Kif2c","Rangap1","Ncapd2","Dlgap5","Cdca2","Cdca8",
+                 "Ect2","Kif23","Hmmr","Aurka","Psrc1","Anln","Lbr","Ckap5",
+                 "Cenpe","Ctcf","Nek2","G2e3","Gas2l3","Cbx5","Cenpa")
+
+geneset$g1s <- toupper(geneset$g1s)
+geneset$g2m <- toupper(geneset$g2m)
+
 #读入10X/mm10
 data <- Read10X(data.dir="~/Rstudio/...")
-data <- data[rowMeans(as.matrix(data) > 0),]####过滤 gene 表达为0的 gene
+data <- as.matrix(data)
+# filt_cells
+filt_cells <- read.csv(file = '')
+#
+pbmc <- CreateSeuratObject(raw.data = data,min.cells = 0,min.genes = -1)
+# DoubletDetect 标记 doublet
+pbmc@meta.data$dblets_1 <- filt_cells$V1
+pbmc@meta.data$dblets_1 <- ifelse(pbmc@meta.data$doublets == 1,'doublet','others')
+doublets_2 <- colnames(pbmc@raw.data)[apply(pbmc@raw.data[c('Kdm5d','Eif2s3y','Gm29650','Uty','Ddx3y'),],2,
+                                            function(x) any(x>0)) & pbmc@raw.data["Xist",]>0]
+
+
+#过滤 gene 表达为0的 gene
+pbmc@raw.data <- as.matrix(pbmc@raw.data)[rowMeans(as.matrix(pbmc@raw.data))>0,]
 dim（data)
 
-pbmc <- CreateSeuratObject(raw.data = data,min.cells = 0,min.genes = -1)
+# 标记样本类型
+pbmc@meta.data$type <- 'type'
 
-par(mfrow = c(1,1))#设置窗口#（针对 Error:figure margins too large）
-             
+#par(mfrow = c(1,1))#设置窗口#（针对 Error:figure margins too large）
 plot(pbmc@meta.data$nUMI, pbmc@meta.data$nGene, 
      xlab = "nUMI - the number of transcripts", 
      ylab = "nGene - the number of genes")
@@ -54,9 +93,12 @@ plot(pbmc@meta.data$nUMI, pbmc@meta.data$nGene,
 pbmc@meta.data$filt_cells_nGene <- ifelse(pbmc@meta.data$nGene < 2500,"filt_cells_nGene","others")
 pbmc@meta.data$filt_cells_nUMI <- ifelse(pbmc@meta.data$nUMI < 10000,"filt_cells_nUMI","others")  
 
-dblets <- colnames(pbmc@raw.data)[apply(pbmc@raw.data[c('Kdm5d','Eif2s3y','Gm29650','Uty','Ddx3y'),],2,
-                                        function(x) any(x>0)) & pbmc@raw.data["Xist",]>0]###可能为 doublets 细胞
-pbmc@meta.data$doublets <- ifelse(rownames(pbmc@meta.data) %in% dblets,'doublet','singlet')
+## 小鼠判断doublets
+doublets_2 <- colnames(pbmc@raw.data)[apply(pbmc@raw.data[c('Kdm5d','Eif2s3y','Gm29650','Uty','Ddx3y'),],2,
+                                            function(x) any(x>0)) & pbmc@raw.data["Xist",]>0]
+
+                                            
+                                            pbmc@meta.data$dblets_2 <- ifelse(rownames(pbmc@meta.data) %in% doublets_2,'doublet','singlet')
 
 #unfilt cells_PCA 查看细胞判断其低质量 or 独立群体细胞             
 pbmc <- NormalizeData(pbmc,scale.factor = 10000)
