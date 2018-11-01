@@ -5,6 +5,7 @@ rm（list = ls(())
 library(Seurat)
 library(scater)
 library(RColorBrewer)
+library(dplyr)
 library(readxl)
 
 ##colors
@@ -27,7 +28,7 @@ col_hh <- c('#9DC8C8','#D1B6E1','#519D9E','#E53A40',
             '#30A9DE','#F17F42','#566270','#8CD790',
             '#2EC4B6', '#44633F','#D81159','#4F86C6',
             '#AACD6E','#F16B6F','#E3E36A','#D8E6E7',
-            '#D09E88','#7200da','#f100e5','#005f6b')##25
+            '#D09E88','#7200da','#f100e5','#005f6b')##20
 
 #引入细胞周期 marker（g1$s,g2$m）
 #
@@ -66,22 +67,22 @@ geneset$g2m <- toupper(geneset$g2m)
 #读入10X/mm10
 data <- Read10X(data.dir="~/Rstudio/...")
 data <- as.matrix(data)
+#过滤 gene 表达为0的 gene
+pbmc@raw.data <- pbmc@raw.data[rowMeans(as.matrix(pbmc@raw.data))>0,]##根据情况决定是否在创建 seurat 对象之前过滤
+pbmc@data <- pbmc@data[rowMeans(as.matrix(pbmc@data))>0,]
 # filt_cells
-filt_cells <- read.csv(file = '')
+filt_cells <- read.csv(file = '',header = F)
 #
 pbmc <- CreateSeuratObject(raw.data = data,min.cells = 0,min.genes = -1)
 # DoubletDetect 标记 doublet
 pbmc@meta.data$dblets_1 <- filt_cells$V1
-pbmc@meta.data$dblets_1 <- ifelse(pbmc@meta.data$dblet_1 == 1,'doublet','singlet')
-doublets_1 <- rownames(pbmc@meta.data[,dblets_1 == 1])
-doublets_2 <- colnames(pbmc@raw.data)[apply(pbmc@raw.data[c('Kdm5d','Eif2s3y','Gm29650','Uty','Ddx3y'),],2,function(x) any(x>0)) & pbmc@raw.data["Xist",]>0]
-pbmc@meta.data$dblets_2 <- ifelse(rownames(pbmc@meta.data) %in% doublests_2,'doublet','singlet')
-doublets <- union(doublets_1,doublet_2)
-
-#过滤 gene 表达为0的 gene
-pbmc@raw.data <- as.matrix(pbmc@raw.data)[rowMeans(as.matrix(pbmc@raw.data))>0,]
-dim（data)
-
+pbmc@meta.data$dblets_1 <- ifelse(pbmc@meta.data$dblets_1 == 1,'doublet','singlet')
+doublets_1 <- rownames(pbmc@meta.data[pbmc@meta.data$dblets_1 == 'doublet',])
+doublets_2 <- colnames(pbmc@raw.data)
+[apply(pbmc@raw.data[c('Kdm5d','Eif2s3y','Gm29650','Uty','Ddx3y'),],2,function(x) any(x>0)) & pbmc@raw.data["Xist",]>0]
+pbmc@meta.data$dblets_2 <- ifelse(rownames(pbmc@meta.data) %in% doublets_2,'doublet','singlet')
+doublets <- union(doublets_1,doublets_2)
+                                            
 # 标记样本类型
 pbmc@meta.data$type <- 'type'
 
@@ -92,14 +93,13 @@ plot(pbmc@meta.data$nUMI, pbmc@meta.data$nGene,
 
 #判断可能会过滤细胞类型，是否为 needed 细胞             
 pbmc@meta.data$filt_cells_nGene <- ifelse(pbmc@meta.data$nGene < 2500,"filt_cells_nGene","others")
-pbmc@meta.data$filt_cells_nUMI <- ifelse(pbmc@meta.data$nUMI < 10000,"filt_cells_nUMI","others")  
+pbmc@meta.data$filt_cells_nUMI <- ifelse(pbmc@meta.data$nUMI < 10000,"filt_cells_nUMI","others")
 
-## 小鼠判断doublets
-doublets_2 <- colnames(pbmc@raw.data)[apply(pbmc@raw.data[c('Kdm5d','Eif2s3y','Gm29650','Uty','Ddx3y'),],2,
-                                            function(x) any(x>0)) & pbmc@raw.data["Xist",]>0]
-
-                                            
-                                            pbmc@meta.data$dblets_2 <- ifelse(rownames(pbmc@meta.data) %in% doublets_2,'doublet','singlet')
+## evaluate threshold for percent.mito
+mito.genes <- grep(pattern = "^MT-", x = rownames(x = pbmc@data), value = TRUE)
+percent.mito <- Matrix::colSums(pbmc@raw.data[mito.genes, ]) / Matrix::colSums(pbmc@raw.data)
+pbmc <- AddMetaData(object = pbmc, metadata = percent.mito, col.name = "percent.mito")
+VlnPlot(object = pbmc, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3)
 
 #unfilt cells_PCA 查看细胞判断其低质量 or 独立群体细胞             
 pbmc <- NormalizeData(pbmc,scale.factor = 10000)
@@ -117,29 +117,19 @@ PCAPlot(pbmc, dim.1 = 1, dim.2 = 2)
 PCAPlot(pbmc, dim.1 = 1, dim.2 = 2, group.by = "filt_cells_nGene")
 PCAPlot(pbmc, dim.1 = 1, dim.2 = 2, group.by = "filt_cells_nUMI")
 FeaturePlot(pbmc, features.plot = c("GYPA", "HBB", "GATA1", "KLF1"), 
-            reduction.use = "pca", cols.use = c("grey","red"))###红细胞
+            reduction.use = "pca", cols.use = c("grey","red"))###红细胞(GYPA:CD235a)
 
 # filter cells
-
 ##确定主成分明确不需要的群体：如根据 PC1 >20过滤细胞，及mito >5%
-##
-pbmc@meta.data$PC1 <- pbmc@dr$pca@cell.embeddings[,1]
-View(pbmc_raw@meta.data)             
-
-## evaluate threshold for percent.mito
-mito.genes <- grep(pattern = "^MT-", x = rownames(x = pbmc@data), 
-                   value = TRUE)
-percent.mito <- Matrix::colSums(pbmc@raw.data[mito.genes, ]) / 
-  Matrix::colSums(pbmc@raw.data)
-pbmc <- AddMetaData(object = pbmc, metadata = percent.mito, 
-                    col.name = "percent.mito")
-VlnPlot(object = pbmc, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3)
-             
-pbmc <- FilterCells(object = pbmc, subset.names = "PC1", high.thresholds = 20)
-pbmc <- FilterCells(object = pbmc, subset.names = "percent.mito", high.thresholds = 0.05)
-pbmc <- SubsetData(pbmc,cells.use = setdiff(colnames(pbmc@raw.data),dblets))###去掉 doublets
+##PC
+#pbmc@meta.data$PC1 <- pbmc@dr$pca@cell.embeddings[,1]
+#View(pbmc_raw@meta.data)             
+#pbmc <- FilterCells(object = pbmc, subset.names = "PC1", high.thresholds = 20)
+                                            
+pbmc <- FilterCells(object = pbmc, subset.names = 'nGene',low.thresholds = 1000)             
+pbmc <- FilterCells(object = pbmc, subset.names = "percent.mito", high.thresholds = 0.03)
+pbmc <- SubsetData(pbmc,cells.use = setdiff(colnames(pbmc@data),doublets))###去掉 doublets
 ncol(pbmc@data)
-
 
 ## 仅根据细胞 nUMI，nGene，mito过滤
 pbmc <- FilterCells(object = pbmc, 
@@ -155,34 +145,21 @@ write.csv(as.matrix(filt_cells_raw), file = "~/Rstudio/.../filt_cells_raw.csv") 
 
              
 ## filt_cells, Detection of variable genes across the single cells
+#Assign Cell-Cycle Scores
+pbmc <- CellCycleScoring(object = pbmc,  s.genes = geneset$g1s, 
+                         g2m.genes = geneset$g2m, set.ident = TRUE)
+head(x = pbmc@meta.data)
+PCAPlot(pbmc, dim.1 = 1, dim.2 = 2, group.by = "Phase")                                           
+pbmc <- ScaleData(pbmc,vars.to.regress = c('nUMI','S.Score','G2M.Score'))
 pbmc <- FindVariableGenes(object = pbmc , mean.function = ExpMean , dispersion.function = LogVMR, 
                           x.low.cutoff = 0.0125, x.high.cutoff = 3, y.cutoff = 0.5)
 length(x = pbmc@var.genes)
+hvg <- rownames(pbmc@hvg.info[order(pbmc@hvg.info[,3],decreasing = TRUE),])[1:2000]
 
 #Perform linear dimensional reduction
 pbmc <- RunPCA(pbmc, pc.genes = pbmc@var.genes, pcs.compute = 50, do.print = TRUE, 
-               pcs.print = 1:10, genes.print = 20)  #（需查看主成分中是否有细胞周期相关基因）
-#Assign Cell-Cycle Scores
-pbmc <- CellCycleScoring(object = pbmc,  s.genes = g1s.genes, 
-                         g2m.genes = g2m.genes, set.ident = TRUE)
-head(x = pbmc@meta.data)
-
-#Running a PCA on cell cycle genes reveals, unsurprisingly, that cells separate entirely by phase
-pbmc <- RunPCA(object = pbmc, pc.genes = c(g1s.genes, g2m.genes), do.print = FALSE)
-PCAPlot(pbmc, dim.1 = 1, dim.2 = 2)
-
-#Regress out cell cycle scores during data scaling，if needed;
-pbmc <- ScaleData(object = pbmc, vars.to.regress = c("S.Score", "G2M.Score"), display.progress = FALSE)
-
-#pca & var.genes, 看 pca中是否包含周期相关基因
-pbmc <- RunPCA(object = pbmc, pc.genes = pbmc@var.genes, pcs.compute = 50, do.print = TRUE, pcs.print = 1:10, genes.print = 30)
-
-pbmc <- RunPCA(object = pbmc, pc.genes = c(s.genes, g2m.genes), do.print = FALSE)
-PCAPlot(pbmc, dim.1 = 1, dim.2 = 2)
-
-
-#Perform linear dimensional reduction
-pbmc <- RunPCA(pbmc, pc.genes = pbmc@var.genes, pcs.compute = 50 ,do.print = TRUE, pcs.print = 1:10, genes.print = 20) 
+               pcs.print = 1:20, genes.print = 10)  #（需查看主成分中是否有细胞周期相关基因）
+PCAPlot(pbmc, dim.1 = 1, dim.2 = 2) 
 
 
 # Visualize the distribution of cell cycle markers across
@@ -195,10 +172,7 @@ pbmc <- RunPCA(pbmc, pc.genes = pbmc@var.genes, pcs.compute = 50 ,do.print = TRU
 
 PCElbowPlot(object = pbmc, num.pc = 50)
 
-#save PCA
-
-#pbmc <- ProjectPCA(pbmc,do.print = FALSE)
-             
+#save PCA    
 pdf(file = "~/Rstudio/.../pca/pc1:6.pdf", width = 9.81, height = 6.49)
 PCHeatmap(object = pbmc, pc.use = 1:6, cells.use = 500, do.balanced = TRUE, label.columns = FALSE, use.full = FALSE)
 dev.off()
@@ -208,31 +182,33 @@ dev.off()
 pbmc_pc15 <- pbmc
 pbmc_pc10 <- pbmc
                                         
-pbmc_ <- FindClusters(object = pbmc_, reduction.type = "pca", dims.use = __, 
+pbmc_ <- FindClusters(object = pbmc_, reduction.type = "pca", dims.use = , 
                      resolution = seq(0.2,2,0.2), print.output = 0, save.SNN = TRUE)
                                         
-###Tsneplot PC15 及PC10
-pbmc_pc10 <- SetAllIdent(pbmc_pc10,id = "res.0.8")
-pbmc_pc10 <-  RunTSNE(pbmc_pc10,do.fast = T,dims.use = 1:10)
-TSNEPlot(pbmc_pc10,do.lable = T,do.return = T,colors.use = bertie.color) + labs(title = "tsne_pc1:10")
-
+###TSNEPlot PC15 及PC10
+pbmc_ <- SetAllIdent(pbmc_,id = "res.0.6")
+pbmc_ <-  RunTSNE(pbmc_,do.fast = T,dims.use = )
+TSNEPlot(pbmc_,do.lable = T,do.return = T,colors.use = ) + labs(title = "tsne_pc1:,perplexity = ")
+TSNEPlot(pbmc_hGW11_,do.lable = T,do.return = T,group.by = 'type',pt.size = 0.8) + labs(title = "Sample")
+TSNEPlot(pbmc_hGW11_,do.lable = F,do.return = T,group.by = 'Phase',
+         colors.use = ) + labs(title = "Cellcycle")
 ##确定 pca
 pbmc <- pbmc_
 
 #设置离散度（perplexity）,选择较好的呈现图，设置resolution = 0.2,0.4,0.6,0.8,1.0,1.2
 
-table(pbmc@meta.data$res)##方便选择 res.?
+table(pbmc@meta.data$res)##注意颜色选择
              
 for(i in seq(20,200,10)){
   pbmc <- SetAllIdent(pbmc, id = "res.0.6")
   pbmc<- RunTSNE(object = pbmc, do.fast = TRUE, dims.use = __, perplexity = i)
-  pdf(file = paste("~/Rstudio/.../perplexity/per",i,".pdf",sep = ""), 
-      width = 9.81,height = 6.94）
+  png(file = paste("~/Rstudio/.../perplexity/per",i,".png",sep = ""), 
+      width = 981,height = 694）
   print(TSNEPlot(object = pbmc, do.label = TRUE, do.return=T, color.use = , pt.size = ) + labs(title=i))
   dev.off()
 }
 
-pbmc <- RunTSNE(object = pbmc, do.fast = TRUE, dims.use = __, perplexity = __)
+pbmc <- RunTSNE(object = pbmc, do.fast = TRUE, dims.use = , perplexity = )
              
 ##Resolution = 0.2,0.4, 0.6, 0.8, 1.0, 1.2
 for(i in seq(0.2,0.8,0.2)){
@@ -252,28 +228,83 @@ for(i in seq(1,1.8,0.2)){
 }
 
 #确定 resolution
-pbmc<- SetAllIdent(pbmc,id = "__")
-TSNEPlot(object = pbmc, do.label = TRUE, do.return = T, color.use = __, pt.size = ) + labs(title = "__")
-DimPlot(object, reduction.use = "pca", dim.1 = 1, dim.2 = 2,
-  cells.use = NULL, pt.size = 1, do.return = FALSE, do.bare = FALSE,
-  cols.use = NULL, group.by = "ident", pt.shape = NULL,
-  do.hover = FALSE, data.hover = "ident", do.identify = FALSE,
-  do.label = FALSE, label.size = 4, no.legend = FALSE, no.axes = FALSE,
-  dark.theme = FALSE, plot.order = NULL, cells.highlight = NULL,
-  plot.title = NULL, vector.friendly = FALSE, png.file = NULL,
-  png.arguments = c(10, 10, 100), ...)
-  
-# cell cycle_tsne
-pbmc <- SetAllIdent(pbmc, id = "Phase")
-pbmc <- RunTSNE(object = pbmc, seed.use = 1, dims.use = __, do.fast = TRUE, perplexity = __) 
-TSNEPlot(object = pbmc, do.label = F)
+pbmc<- SetAllIdent(pbmc,id = "")
+TSNEPlot(object = pbmc, do.label = TRUE, do.return = T, color.use = , pt.size = ) + labs(title = "tsne_PC1:,perplexity = ")
+TSNEPlot(pbmc_hGW11_,do.lable = T,do.return = T,group.by = 'type',pt.size = 0.8) + labs(title = "Sample")
+TSNEPlot(pbmc_hGW11_,do.lable = F,do.return = T,group.by = 'Phase',colors.use = ) + labs(title = "Cellcycle")
 
 ##
-pbmc_ _  <- pbmc  ###保存 pbmc_pc_sample
+pbmc_   <- pbmc  ###保存 pbmc_pc_sample
 #
 write.csv(pbmc_@meta.data, file = '/data2/hehan/Rstudio/.../日期_anno_sample名.csv')
 write.csv(pbmc_@dr$tsne@cell.embeddings,file = "/data2/hehan/Rstudio/.../日期_tsne_cycle_regressout_sample名.csv")
 save(pbmc_,file = "/data2/hehan/Rstudio/.../日期_seurat_cycle_regressout_sample名.RData")
+
+## FeaturePlot
+# S-RPC
+FeaturePlot(pbmc_pc5, features.plot = c('Neurog2','Olig2','Atoh7','Ascl1'), 
+            reduction.use = "tsne", cols.use = c("grey","red"),no.legend = F,pt.size = )
+FeatureHeatmap(pbmc_pc5,features.plot = c('Neurog2','Olig2'),group.by = 'type',
+               pt.size = ,do.return = TRUE)
+FeatureHeatmap(pbmc_pc5,features.plot = c('Atoh7','Ascl1'),group.by = 'type',
+               pt.size = ,do.return = TRUE)
+                      
+# Photoreceptor
+FeaturePlot(pbmc_pc5, features.plot = c('Otx2','Crx','Nrl','Thrb'), pt.size = ,
+            reduction.use = "tsne", cols.use = c("grey","red"),no.legend = F)
+FeaturePlot(pbmc_pc5, features.plot = c('Rxrg','Opn1sw','Rho','Rcvrn'), pt.size = ,
+            reduction.use = "tsne", cols.use = c("grey","red"),no.legend = F)
+FeatureHeatmap(pbmc_pc5,features.plot = c('Rcvrn'),group.by = 'type',
+               pt.size = ,do.return = TRUE)
+# Bipolar
+#FeaturePlot(pbmc_pc5, features.plot = c('Prkca','Lhx4','Prdm8','Stx1a'), pt.size = 0.8,
+#           reduction.use = "tsne", cols.use = c("grey","red"),no.legend = F)
+
+# Horizontal & Amacrine
+FeaturePlot(pbmc_pc5, features.plot = c('Ptf1a','Tfap2b','Tfap2a','Calb1'),pt.size = 0.8,
+            reduction.use = "tsne", cols.use = c("grey","red"),no.legend = T)
+FeaturePlot(pbmc_pc5, features.plot = c('Calb2','Gad2','Slc6a9'), pt.size = 0.8,
+            reduction.use = "tsne", cols.use = c("grey","red"),no.legend = F)
+
+FeatureHeatmap(pbmc_pc5,features.plot = c('Calb1'),group.by = 'type',
+               pt.size = 0.8,do.return = TRUE)
+# Calbindin--Calb1:horizontal and amacrine cells
+# Calb2—-Carentinin：amacrine subclass and ganglion cells
+# Gad65--Gad2:GABAergic amacrine cells
+# glycine transporter 1 (Glyt1, glycinergic amacrine cells)(Slc6a9)
+
+# ganglion
+FeaturePlot(pbmc_pc5, features.plot = c('Pou4f2','Pou4f1','Sncg','Isl1'), 
+            reduction.use = "tsne", cols.use = c("grey","red"),pt.size = 0.8,no.legend = T)
+FeatureHeatmap(pbmc_pc5,features.plot = c('Pou4f2','Pou4f1'),group.by = 'type',
+               pt.size = 0.8,do.return = TRUE)
+FeatureHeatmap(pbmc_pc5,features.plot = c('Sncg','Isl1'),group.by = 'type',
+               pt.size = 0.8,do.return = TRUE)
+
+# muller
+FeaturePlot(pbmc_pc5, features.plot = c('Rlbp1','Gfap','S100b'), pt.size = 0.8,
+            reduction.use = "tsne", cols.use = c("grey","red"),nCol = 3,no.legend = F)
+## 放胶
+FeaturePlot(pbmc_pc5, features.plot = c('Ca2','Slc1a3','Fabp7'), 
+            reduction.use = "tsne", cols.use = c("grey","red"),no.legend = F)
+## 
+FeatureHeatmap(pbmc_pc5,features.plot = c('Slc1a2','Fabp7'),group.by = 'type',
+               pt.size = 0.8,do.return = TRUE)
+
+#name
+pbmc_pc5@meta.data$Cluster <- plyr::mapvalues(pbmc_pc5@meta.data$res.0.6, c(3,6,5,7,10,11,12,14,15,16), 
+                                              c("Photoreceptor", "Photoreceptor", "S-RPC", 
+                                                "Horizontal & Amrcrine",'ganglion-related',
+                                                'ganglion-related','out-segment','ganglion',"H & A",'muller'))
+pbmc_pc5 <- SetAllIdent(pbmc_pc5, "Cluster")
+TSNEPlot(pbmc_pc5,do.label = TRUE,colors.use = bertie.color,pt.size = 0.8)
+
+## 间充质干细胞相关 marker
+#Sca1(Atxn1)、CD105 (Eng)、CD140b (Pdgfrb)、Gpc3、 Tagln、 Dcn 、Col1a2 、Acta2 
+FeaturePlot(pbmc_pc5, features.plot = c('Atxn1',"Eng", "Pdgfrb",'Gpc3'), 
+            reduction.use = "tsne", cols.use = c("grey","red"))
+FeaturePlot(pbmc_pc5, features.plot = c("Tagln", "Dcn",'Col1a2','Myl9'), 
+            reduction.use = "tsne", cols.use = c("grey","red"))                      
 
 # Findmarkers
 res0.6_markers <- FindAllMarkers(object = pbmc, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 1)
@@ -285,14 +316,9 @@ write.csv(cluster10.markers,file = ".csv")
 #vinplot
 VlnPlot(object = pbmc, features.plot = c(""))
  
-#featureplot
-FeaturePlot(pbmc, features.plot = c(''),  pt.size = 1, cols.use = c("grey", "red"), 
-             reduction.use = "tsne", nCol = NULL, do.return = FALSE)
-FeatureHeatmap(pbmc,features.plot = c(""),group.by = "", pt.size = 1, key.position = "top")#cca展示不同批次需要 
- 
  #展示 cluster
  for(i in 0:~){
-   pbmc@meta.data$cluster <- ifelse(pbmc@meta.data$res.~ == i,i,"others")
+   pbmc@meta.data$cluster <- ifelse(pbmc@meta.data$res.0.6 == i,i,"others")
    pbmc <- SetAllIdent(pbmc, id = "cluster")
    pdf(file = paste("~/Rstudio/.../clusterplot/",i,"_cluster.pdf",sep = ""),
        width = 7.10, height = 6.60)
@@ -302,6 +328,7 @@ FeatureHeatmap(pbmc,features.plot = c(""),group.by = "", pt.size = 1, key.positi
  
  #确定群体名字，if needed
 pbmc <- SetAllIdent(pbmc, id = "")#已设置 ident 不需要
+                      
 current.cluster.ids <- c(0, 1, 2, 3, 4, 5, 6, 7)
 new.cluster.ids <- c("")
 pbmc@ident <- plyr::mapvalues(x = pbmc@ident, from = current.cluster.ids, to = new.cluster.ids)
