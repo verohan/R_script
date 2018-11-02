@@ -200,7 +200,7 @@ table(pbmc@meta.data$res)##注意颜色选择
              
 for(i in seq(20,200,10)){
   pbmc <- SetAllIdent(pbmc, id = "res.0.6")
-  pbmc<- RunTSNE(object = pbmc, do.fast = TRUE, dims.use = __, perplexity = i)
+  pbmc<- RunTSNE(object = pbmc, do.fast = TRUE, dims.use = , perplexity = i)
   png(file = paste("~/Rstudio/.../perplexity/per",i,".png",sep = ""), 
       width = 981,height = 694）
   print(TSNEPlot(object = pbmc, do.label = TRUE, do.return=T, color.use = , pt.size = ) + labs(title=i))
