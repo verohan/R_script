@@ -1,9 +1,8 @@
 setwd()
 options(stringsAsFactors = F)
-rm（list = ls(())
+rm(list = ls(())
 ##library
 library(Seurat)
-library(scater)
 library(RColorBrewer)
 library(dplyr)
 library(readxl)
