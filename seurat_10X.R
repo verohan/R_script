@@ -1,6 +1,6 @@
-setwd()
+rm(list = ls())
 options(stringsAsFactors = F)
-rm(list = ls(())
+
 ##library
 library(Seurat)
 library(RColorBrewer)
@@ -22,7 +22,7 @@ pal_cluster <- c("#FF00AE", "#A020F1", "#000000", "#0403E5", "#FF8C01",
                  "#4A95FB", "#61FE69", "#9A7A01", "#017F8B", "#05FDFF",
                  "#D0B38A", "#533E88", "#D23E28", "#80A469", "#F06360")##20
 pal_location <- brewer.pal(12, name = "Paired")
-pal_stage <- c("indianred", "steelblue", "blue3")
+pal_stage <- c("ffd2a5", "d38cad", "8a79af")
 col_hh <- c('#9DC8C8','#D1B6E1','#519D9E','#E53A40',
             '#30A9DE','#F17F42','#566270','#8CD790',
             '#2EC4B6', '#44633F','#D81159','#4F86C6',
@@ -67,6 +67,7 @@ geneset$g2m <- toupper(geneset$g2m)
 data <- Read10X(data.dir="~/Rstudio/...")
 data <- as.matrix(data)
 #过滤 gene 表达为0的 gene
+data <- data[rowMeans(data)>0,]
 pbmc@raw.data <- pbmc@raw.data[rowMeans(as.matrix(pbmc@raw.data))>0,]##根据情况决定是否在创建 seurat 对象之前过滤
 pbmc@data <- pbmc@data[rowMeans(as.matrix(pbmc@data))>0,]
 # filt_cells
@@ -77,10 +78,10 @@ pbmc <- CreateSeuratObject(raw.data = data,min.cells = 0,min.genes = -1)
 pbmc@meta.data$dblets_1 <- filt_cells$V1
 pbmc@meta.data$dblets_1 <- ifelse(pbmc@meta.data$dblets_1 == 1,'doublet','singlet')
 doublets_1 <- rownames(pbmc@meta.data[pbmc@meta.data$dblets_1 == 'doublet',])
-doublets_2 <- colnames(pbmc@raw.data)
-[apply(pbmc@raw.data[c('Kdm5d','Eif2s3y','Gm29650','Uty','Ddx3y'),],2,function(x) any(x>0)) & pbmc@raw.data["Xist",]>0]
+doublets_2 <- colnames(pbmc@raw.data)[apply(pbmc@raw.data[c('Kdm5d','Eif2s3y','Gm29650','Uty','Ddx3y'),],2,function(x) any(x>0)) & pbmc@raw.data["Xist",]>0]
 pbmc@meta.data$dblets_2 <- ifelse(rownames(pbmc@meta.data) %in% doublets_2,'doublet','singlet')
 doublets <- union(doublets_1,doublets_2)
+pbmc@meta.data$doublets <- ifelse(rownames(pbmc@meta.data) %in% doublets,'doublet','singlet')
                                             
 # 标记样本类型
 pbmc@meta.data$type <- 'type'
@@ -99,7 +100,9 @@ mito.genes <- grep(pattern = "^MT-", x = rownames(x = pbmc@data), value = TRUE)
 percent.mito <- Matrix::colSums(pbmc@raw.data[mito.genes, ]) / Matrix::colSums(pbmc@raw.data)
 pbmc <- AddMetaData(object = pbmc, metadata = percent.mito, col.name = "percent.mito")
 VlnPlot(object = pbmc, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3)
-
+VlnPlot(object = pbmc, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3,group.by = 'dblets_1')
+VlnPlot(object = pbmc, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3,group.by = 'dblets_2')
+      
 #unfilt cells_PCA 查看细胞判断其低质量 or 独立群体细胞             
 pbmc <- NormalizeData(pbmc,scale.factor = 10000)
 pbmc <- ScaleData(pbmc)
@@ -115,9 +118,10 @@ pbmc <- RunPCA(pbmc, pc.genes = pbmc@var.genes, pcs.compute = 30, do.print = TRU
 PCAPlot(pbmc, dim.1 = 1, dim.2 = 2)
 PCAPlot(pbmc, dim.1 = 1, dim.2 = 2, group.by = "filt_cells_nGene")
 PCAPlot(pbmc, dim.1 = 1, dim.2 = 2, group.by = "filt_cells_nUMI")
-FeaturePlot(pbmc, features.plot = c("GYPA", "HBB", "GATA1", "KLF1"), 
+PCAPlot(pbmc, dim.1 = 1, dim.2 = 2, group.by = "doublets")       
+FeaturePlot(pbmc, features.plot = c("GYPA", "PTPRE", "GATA1", "KLF1"), 
             reduction.use = "pca", cols.use = c("grey","red"))###红细胞(GYPA:CD235a)
-
+pbmc <- RunUMAP(pbmc,min_dist = 0.2, dims.use = 1:10)
 # filter cells
 ##确定主成分明确不需要的群体：如根据 PC1 >20过滤细胞，及mito >5%
 ##PC
@@ -128,13 +132,6 @@ FeaturePlot(pbmc, features.plot = c("GYPA", "HBB", "GATA1", "KLF1"),
 pbmc <- FilterCells(object = pbmc, subset.names = 'nGene',low.thresholds = 1000)             
 pbmc <- FilterCells(object = pbmc, subset.names = "percent.mito", high.thresholds = 0.03)
 pbmc <- SubsetData(pbmc,cells.use = setdiff(colnames(pbmc@data),doublets))###去掉 doublets
-ncol(pbmc@data)
-
-## 仅根据细胞 nUMI，nGene，mito过滤
-pbmc <- FilterCells(object = pbmc, 
-                    subset.names = c("nGene",'nUMI', "percent.mito"), 
-                    low.thresholds = c(1000, 4000,-Inf), 
-                    high.thresholds = c(40000, 60000,0.1))
 ncol(pbmc@data)
 
 ## save filt_cells
@@ -178,11 +175,100 @@ dev.off()
 
 #Cluster the cells 
 ##根据 pca 选择1:10,or 1:15,分别分群及 runtsne
-pbmc_pc15 <- pbmc
-pbmc_pc10 <- pbmc
                                         
-pbmc_ <- FindClusters(object = pbmc_, reduction.type = "pca", dims.use = , 
+pbmc <- FindClusters(object = pbmc, reduction.type = "pca", dims.use = , 
                      resolution = seq(0.2,2,0.2), print.output = 0, save.SNN = TRUE)
+       
+##RunUMAP
+pbmc <- RunUMAP(pbmc, dims.use = 1:10, min_dist = 0.2, n_neighbors = )
+DimPlot(pbmc, reduction.use = 'umap', do.return = T,cols.use = col_hh, group.by = 'res.0.6', pt.size = ,
+        plot.title = 'pc1:10_umap_E14')
+DimPlot(pbmc, reduction.use = 'umap', do.return = T,cols.use = pal_stage, group.by = 'Phase', pt.size = 1.2,
+        plot.title = 'pc1:15_umap_E14')
+## FeaturePlot
+# S-RPC
+FeaturePlot(pbmc, features.plot = c('Neurog2','Olig2','Atoh7','Ascl1'), 
+            reduction.use = "umap", cols.use = c("grey","red"),no.legend = F,pt.size = 0.8)
+# Photoreceptor
+FeaturePlot(pbmc, features.plot = c('Otx2','Crx','Nrl','Thrb'),
+            reduction.use = "umap", cols.use = c("grey","red"),no.legend = F)
+FeaturePlot(pbmc, features.plot = c('Rxrg','Opn1sw','Rho','Rcvrn'), 
+            reduction.use = "umap", cols.use = c("grey","red"),no.legend = F)
+# Bipolar
+FeaturePlot(pbmc, features.plot = c('Prkca','Lhx4','Prdm8','Stx1a'),
+            reduction.use = "umap", cols.use = c("grey","red"),no.legend = F)
+# Horizontal & Amacrine
+FeaturePlot(pbmc, features.plot = c('Ptf1a','Tfap2b','Tfap2a','Calb1'),
+            reduction.use = "umap", cols.use = c("grey","red"),no.legend = F)
+FeaturePlot(pbmc, features.plot = c('Calb2','Gad2','Slc6a9'), 
+            reduction.use = "umap", cols.use = c("grey","red"),no.legend = F)
+
+# Calbindin--Calb1:horizontal and amacrine cells
+# Calb2—-Carentinin：amacrine subclass and ganglion cells
+# Gad65--Gad2:GABAergic amacrine cells
+# glycine transporter 1 (Glyt1, glycinergic amacrine cells)(Slc6a9)
+
+# ganglion
+FeaturePlot(pbmc, features.plot = c('Pou4f2','Pou4f1','Sncg','Isl1'), 
+            reduction.use = "umap", cols.use = c("grey","red"),no.legend = F)
+# muller
+FeaturePlot(pbmc, features.plot = c('Rlbp1','Gfap','S100b'), 
+            reduction.use = "umap", cols.use = c("grey","red"),nCol = 3,no.legend = F)
+## 放胶
+FeaturePlot(pbmc, features.plot = c('Nes','Slc1a3','Fabp7'), 
+            reduction.use = "umap", cols.use = c("grey","red"),no.legend = F)
+
+#name
+pbmc@meta.data$Cluster <- plyr::mapvalues(pbmc@meta.data$res.0.4, 
+                                          c(2,3,5,6), c("S-RPC", "ganglion",'photoreceptor',"H & A"))
+
+DimPlot(pbmc, reduction.use = 'umap', do.return = T,cols.use = col_hh, group.by = 'Cluster',
+        plot.title = 'pc1:15_umap_E14')
+# Findmarkers
+pbmc <- SetAllIdent(pbmc,id = 'res.0.4')
+degs <- FindAllMarkers(object = pbmc, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.5)
+cluster10.markers <- FindMarkers(object = pbmc, ident.1 = , ident.2 = c(2,1,4,6,9), 
+                                 min.pct = 0.25, logfc.threshold = 1, only.pos = TRUE)
+       
+##clustprofiler
+library(clusterProfiler)
+library(org.Mm.eg.db)
+keytypes(org.Mm.eg.db)
+c3 <- subset(degs, cluster == "3")$gene
+c3.fc <- subset(degs, cluster == "3")$avg_logFC
+
+c3.idmap <- bitr(geneID = c3, fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Mm.eg.db)
+c3.id <- c3.idmap$ENTREZID[match(c3, c3.idmap$SYMBOL)]
+
+ggo <- groupGO(gene = c3, 
+               OrgDb = org.Mm.eg.db, 
+               keytype = "SYMBOL", 
+               ont = "CC", 
+               level = 5, 
+               readable = F)
+ego <- enrichGO(gene = c3, 
+                OrgDb = org.Mm.eg.db, 
+                keyType = "SYMBOL", 
+                ont = "BP", # "BP", "CC", "MF", "ALL" 
+                pvalueCutoff = 0.05, 
+                pAdjustMethod = "BH", 
+                qvalueCutoff = 0.05, 
+                minGSSize = 10, 
+                maxGSSize = 500, 
+                readable = F, 
+                pool = F)
+# ego2 <- setReadable(ego2, OrgDb = org.Hs.eg.db)
+# dropGO(x = ego, level = 5, term = NULL)
+ego1 <- simplify(x = ego)
+ego2 <- gofilter(x = ego, level = 4)
+barplot(ego2, 
+        colorBy = "p.adjust", showCategory = 10, font.size = 10, title = "clusterProfiler results") # see help
+dotplot(ego, 
+        colorBy = "p.adjust", showCategory = 10, font.size = 10, title = "clusterProfiler results") # see help
+enrichMap(ego)
+cnetplot(ego, categorySize = "pvalue", foldChange = setNames(c3.fc, c3), font.size = 1)
+plotGOgraph(ego)
+
                                         
 ###TSNEPlot PC15 及PC10
 pbmc_ <- SetAllIdent(pbmc_,id = "res.0.6")
