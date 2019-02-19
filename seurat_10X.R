@@ -17,17 +17,39 @@ bertie.color <- c("#D0B38A", "#A3D171", "#533E88", "#7957A3", "#000000",
 pal_dolphin <- c("#FF00AE", "#A020F1", "#000000", "#0403E5", "#FF8C01", 
                  "#8B0101", "#007502", "#FE0000", "#FFFF01", "#FF99CB", 
                  "#4A95FB", "#61FE69", "#9A7A01", "#017F8B", "#05FDFF", "grey")##15
-pal_cluster <- c("#FF00AE", "#A020F1", "#000000", "#0403E5", "#FF8C01", 
-                 "#8B0101", "#007502", "#FE0000", "#FFFF01", "#FF99CB", 
-                 "#4A95FB", "#61FE69", "#9A7A01", "#017F8B", "#05FDFF",
-                 "#D0B38A", "#533E88", "#D23E28", "#80A469", "#F06360")##20
 pal_location <- brewer.pal(12, name = "Paired")
 pal_stage <- c("ffd2a5", "d38cad", "8a79af")
-col_hh <- c('#9DC8C8','#D1B6E1','#519D9E','#E53A40',
+
+col_hh_20 <- c('#9DC8C8','#D1B6E1','#519D9E','#E53A40',
             '#30A9DE','#F17F42','#566270','#8CD790',
             '#2EC4B6', '#44633F','#D81159','#4F86C6',
             '#AACD6E','#F16B6F','#E3E36A','#D8E6E7',
             '#D09E88','#7200da','#f100e5','#005f6b')##20
+col_gyd_19 <- c('dodgerblue2','red3','green3','slateblue','darkorange',
+                'skyblue1','violetred4','forestgreen','steelblue4','slategrey',
+                'brown','darkseagreen','darkgoldenrod3','olivedrab','royalblue',
+                'tomato4','cyan2','springgreen2','lightyellow')
+col_gyd_12 <- c('#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd',
+                '#8c564b','#e377c2','#bcbd22','#17becf','#aec7e8',
+                '#ffbb78','#98df8a')
+col_hh_10 <- c('#9DC8C8','#D1B6E1',"#30A9DE","#F17F42",'#566270',
+               "#8CD790","#44633F","#F16B6F","#E3E36A","#f100e5") 
+col_hj_55 <- c('#FFFF00', '#1CE6FF', '#FF34FF', '#FF4A46', '#008941', 
+               '#006FA6', '#A30059', '#FFDBE5', '#7A4900', '#0000A6', 
+               '#63FFAC', '#B79762', '#004D43', '#8FB0FF', '#997D87', 
+               '#5A0007', '#809693', '#FEFFE6', '#1B4400', '#4FC601', 
+               '#3B5DFF', '#4A3B53', '#FF2F80', '#61615A', '#BA0900', 
+               '#6B7900', '#00C2A0', '#FFAA92', '#FF90C9', '#B903AA', 
+               '#D16100', '#DDEFFF', '#000035', '#7B4F4B', '#A1C299', 
+               '#300018', '#0AA6D8', '#013349', '#00846F', '#372101', 
+               '#FFB500', '#C2FFED', '#A079BF', '#CC0744', '#C0B9B2',
+               '#C2FF99', '#001E09', '#00489C', '#6F0062', '#0CBD66', 
+               '#EEC3FF', '#456D75', '#B77B68', '#7A87A1', '#788D66')
+col_heatmap_hh <- c('#ff7761','#ecfafb','#274555') 
+col_heatmap_hj <- c("#2E294E","#9055A2","#D499B9","#FFFFF2","#FDD692","#EC7357")
+
+col_stage_feature <- c("grey", "#f26d5b","#492540") 
+col_stage_feature <- c('#E0E3DA','#e4406f')
 
 #引入细胞周期 marker（g1$s,g2$m）
 #
@@ -43,7 +65,7 @@ library(Hmisc)
 g1s.genes <- capitalize(g1s.genes)
 g2m.genes <- capitalize(g2m.genes)
 
-##
+##mouse
 geneset <- list()
 geneset$g1s <- c("Mcm5","Pcna","Tyms","Fen1","Mcm2","Mcm4","Rrm1","Ung","Gins2",
                  "Mcm6","Cdca7","Dtl","Prim1","Uhrf1","Cenpu","Hells","Rfc2",
@@ -110,8 +132,8 @@ pbmc <- ScaleData(pbmc)
 #seurat中Normolization（值为 log（2）与手动取 log，是不一样的，手动取 log 可能会在后续寻找 df markers 中其 logFC 值可能会被放大；）
 #vars.to.regress = c("nUMI" , "percent.mito")#(vars.to.regress,对 UMI 范围不是特别大，不用执行回归) 
              
-pbmc <- FindVariableGenes(object = pbmc , mean.function = ExpMean , dispersion.function = LogVMR, 
-                          x.low.cutoff = 0.0125, x.high.cutoff = 3, y.cutoff = 0.5)
+pbmc <- FindVariableGenes(object = pbmc , mean.function = ExpMean , dispersion.function = LogVMR, x.low.cutoff = 0.0125, x.high.cutoff = 3, y.cutoff = 0.5)
+
 length(x = pbmc@var.genes)
 pbmc <- RunPCA(pbmc, pc.genes = pbmc@var.genes, pcs.compute = 30, do.print = TRUE, 
                pcs.print = 1:10, genes.print = 20)
@@ -139,19 +161,28 @@ filt_cells <- colnames(pbmc@data)
 filt_cells_raw <- pbmc@raw.data[,filt_cells]
 write.csv(as.matrix(filt_cells_raw), file = "~/Rstudio/.../filt_cells_raw.csv")  #此为保存细胞过滤后未normalise表达矩阵
 
-             
 ## filt_cells, Detection of variable genes across the single cells
 #Assign Cell-Cycle Scores
 pbmc <- CellCycleScoring(object = pbmc,  s.genes = geneset$g1s, 
                          g2m.genes = geneset$g2m, set.ident = TRUE)
 head(x = pbmc@meta.data)
 PCAPlot(pbmc, dim.1 = 1, dim.2 = 2, group.by = "Phase")                                           
-pbmc <- ScaleData(pbmc,vars.to.regress = c('nUMI','S.Score','G2M.Score'))
+pbmc <- ScaleData(pbmc,vars.to.regress = c('nUMI','S.Score','G2M.Score'))##根据情况选择是否需要回归周期
 pbmc <- FindVariableGenes(object = pbmc , mean.function = ExpMean , dispersion.function = LogVMR, 
-                          x.low.cutoff = 0.0125, x.high.cutoff = 3, y.cutoff = 0.5)
+                          x.low.cutoff = 0.0125, x.high.cutoff = 3, y.cutoff = 0.5)##10X 数据建议选择2000Gene左右
 length(x = pbmc@var.genes)
-hvg <- rownames(pbmc@hvg.info[order(pbmc@hvg.info[,3],decreasing = TRUE),])[1:2000]
 
+#hvg <- rownames(pbmc@hvg.info[order(pbmc@hvg.info[,3],decreasing = TRUE),])[1:2000]
+library(org.Mm.eg.db)
+gogenes <- select(org.Mm.eg.db, keys = c("GO:0007049"), columns = c("SYMBOL"), keytype = "GOALL")
+hvg <- setdiff(pbmc@var.genes,unique(gogenes$SYMBOL))##2018
+hvg <- setdiff(hvg,c('Ung','Hmmr'))##2016
+
+##                                            
+pbmc <- RunPCA(pbmc, pc.genes = hvg, pcs.compute = 50, do.print = TRUE, 
+                        pcs.print = 1:20, genes.print = 10) 
+PCElbowPlot(object = pbmc, num.pc = 30)
+                                            
 #Perform linear dimensional reduction
 pbmc <- RunPCA(pbmc, pc.genes = pbmc@var.genes, pcs.compute = 50, do.print = TRUE, 
                pcs.print = 1:20, genes.print = 10)  #（需查看主成分中是否有细胞周期相关基因）
@@ -181,14 +212,14 @@ pbmc <- FindClusters(object = pbmc, reduction.type = "pca", dims.use = ,
        
 ##RunUMAP
 pbmc <- RunUMAP(pbmc, dims.use = 1:10, min_dist = 0.2, n_neighbors = )
-DimPlot(pbmc, reduction.use = 'umap', do.return = T,cols.use = col_hh, group.by = 'res.0.6', pt.size = ,
+DimPlot(pbmc, reduction.use = 'umap', do.return = T,cols.use = , group.by = 'res.0.6', pt.size = ,
         plot.title = 'pc1:10_umap_E14')
-DimPlot(pbmc, reduction.use = 'umap', do.return = T,cols.use = pal_stage, group.by = 'Phase', pt.size = 1.2,
+DimPlot(pbmc, reduction.use = 'umap', do.return = T,cols.use = , group.by = 'Phase', pt.size = 1.2,
         plot.title = 'pc1:15_umap_E14')
 ## FeaturePlot
 # S-RPC
 FeaturePlot(pbmc, features.plot = c('Neurog2','Olig2','Atoh7','Ascl1'), 
-            reduction.use = "umap", cols.use = c("grey","red"),no.legend = F,pt.size = 0.8)
+            reduction.use = "umap", cols.use = ,no.legend = F,pt.size = 0.8)
 # Photoreceptor
 FeaturePlot(pbmc, features.plot = c('Otx2','Crx','Nrl','Thrb'),
             reduction.use = "umap", cols.use = c("grey","red"),no.legend = F)
