@@ -449,6 +449,88 @@ current.cluster.ids <- c(0, 1, 2, 3, 4, 5, 6, 7)
 new.cluster.ids <- c("")
 pbmc@ident <- plyr::mapvalues(x = pbmc@ident, from = current.cluster.ids, to = new.cluster.ids)
 TSNEPlot(object = pbmc, do.label = TRUE, pt.size = ...)
+                      
+myFeaturePlot <- function(pbmc, features.plot, nrow = NULL, ncol = NULL, dr = c("tsne","pca","ccscore","avscore","umap"), cc.args = list(th.g1s = 2, th.g2m = 2),...){
+  require(ggplot2)
+  require(gridExtra)
+  dr <- dr[1]
+  ggData <- as.data.frame(cbind(pbmc@dr[[dr]]@cell.embeddings,FetchData(pbmc, features.plot)))
+  colnames(ggData) <- c(colnames(pbmc@dr[[dr]]@cell.embeddings),gsub("-",".",features.plot))
+  # print(feature.tmp)
+  # ggData[,feature.tmp] <- t(pbmc@data[feature.tmp,])
+  if(dr == 'tsne') {
+    xx <- "tSNE_1"
+    yy <- "tSNE_2"
+  }
+  if(dr == 'pca'){
+    xx <- "PC1"
+    yy <- "PC2"
+  }
+  if(dr == 'dpt'){
+    xx <- "DC1"
+    yy <- "DC2"
+  }
+  if(dr == 'ccscore'){
+    xx <- "G1S.Score"
+    yy <- "G2M.Score"
+  }
+  if(dr == 'avscore'){
+    xx <- "Artery.Score"
+    yy <- "Venous.Score"
+  }
+  if(dr == 'umap'){
+    xx <- 'UMAP1'
+    yy <- 'UMAP2'
+  }
+  col_stage_feature <- c('grey',"#fff0bc","#f05a28")
+  ggl <- lapply(features.plot, function(feature){
+    p <- ggplot(ggData) + geom_point(mapping = aes_string(x = xx, y = yy, color = gsub("-",".",feature)), size = 0.2) + 
+      scale_color_gradientn(colours = col_stage_feature) + 
+      xlab(label = xx) + ylab(label = yy) +
+      theme(legend.title = element_blank()) + ggtitle(feature) 
+    if(dr == "ccscore"){
+      th.g1s <- cc.args$th.g1s
+      th.g2m <- cc.args$th.g2m
+      ccx <- ceiling(max(pbmc@meta.data$G1S.Score))
+      ccy <- ceiling(max(pbmc@meta.data$G2M.Score))
+      p <- p + geom_linerange(mapping = aes_(x = th.g1s, ymin = 0, ymax = th.g1s)) + 
+        geom_segment(mapping = aes_(x = 0, y = th.g2m, xend = ccx, yend = th.g2m)) + 
+        geom_segment(mapping = aes_(x = th.g1s, y = th.g2m, xend = ccx, yend = ccy)) +
+        geom_text(mapping = aes_(th.g1s, quote(0.3), label = quote("Quiescent"), hjust = 1.1)) +
+        geom_text(mapping = aes_(ccx, quote(0.3), label = quote("G1"), hjust = 1.1)) +
+        geom_text(mapping = aes_(ccx, ccy-2, label = quote("S"), hjust = 1.1)) +
+        geom_text(mapping = aes_(th.g1s/2, ccy-1, label = quote("G2M"), hjust = 1.1))
+    }
+    p
+  })
+  grid.arrange(grobs = ggl, nrow= nrow,ncol = ncol)
+}
+
+
+myFeaturePlot(pbmc_E14,features.plot = c('Rax','Vsx2','Sox2','Pax6'), dr = 'umap',nrow = 1)
+myFeaturePlot(pbmc_E14,features.plot = c('Neurog2','Olig2','Atoh7'),dr = 'umap',nrow = 1)
+
+# Photoreceptor
+myFeaturePlot(pbmc_E14,features.plot = c('Otx2','Crx','Nrl','Thrb'),dr = 'umap',nrow = 1)
+myFeaturePlot(pbmc_E14,features.plot = c('Rxrg','Opn1sw','Rho','Rcvrn'),dr = 'umap')
+
+# Horizontal & Amacrine
+myFeaturePlot(pbmc_E14,features.plot = c('Ptf1a','Tfap2b','Tfap2a'),dr = 'umap',nrow = 1)
+myFeaturePlot(pbmc,features.plot = c('Calb2','Gad2','Slc6a9' ),dr = 'umap')
+
+# Calbindin--Calb1:horizontal and amacrine cells
+# Calb2—-Carentinin：amacrine subclass and ganglion cells
+# Gad65--Gad2:GABAergic amacrine cells
+# glycine transporter 1 (Glyt1, glycinergic amacrine cells)(Slc6a9)
+
+# ganglion
+#myFeaturePlot(pbmc_E14,features.plot = c('Pou4f2','Pou4f1','Rxrg'), dr = 'umap',nrow = 1)
+
+# muller
+myFeaturePlot(pbmc, features.plot = c('S100b','Gfap'), dr = 'umap',ncol = 2)
+
+## 放胶
+myFeaturePlot(pbmc_E14,features.plot = c('Nes','Slc1a3','Fabp7'),dr = 'umap',nrow = 1)              
 
  
  
