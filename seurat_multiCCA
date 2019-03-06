@@ -1,24 +1,24 @@
 未整理
 from zhangmin
 ####16
-pbmc_16T.data <- Read10X(data.dir="/data2/zhangmin/10X/171239_20180629/16T/16T/outs/filtered_gene_bc_matrices/hg19")
+pbmc_16T.data <- Read10X(data.dir="")
 colnames(x = pbmc_16T.data) <- paste('16T', colnames(x = pbmc_16T.data), sep = '_')
 pbmc_16T<- CreateSeuratObject(raw.data = pbmc_16T.data, 
                               min.cells = 10, min.genes = 500, 
                               project = "16T")
-pbmc_16N.data <- Read10X(data.dir="/data2/zhangmin/10X/171239_20180629/16N/16N/outs/filtered_gene_bc_matrices/hg19")
+pbmc_16N.data <- Read10X(data.dir="")
 colnames(x = pbmc_16N.data) <- paste('16N', colnames(x = pbmc_16N.data), sep = '_')
 pbmc_16N <- CreateSeuratObject(raw.data = pbmc_16N.data, 
                                min.cells = 10, min.genes = 500, 
                                project = "16N")
 
 ####17
-pbmc_17T.data <- Read10X(data.dir="/data2/zhangmin/10X/171239_20180629/17T/17T/outs/filtered_gene_bc_matrices/hg19")
+pbmc_17T.data <- Read10X(data.dir="")
 colnames(x = pbmc_17T.data) <- paste('17T', colnames(x = pbmc_17T.data), sep = '_')
 pbmc_17T<- CreateSeuratObject(raw.data = pbmc_17T.data, 
                               min.cells = 10, min.genes = 500, 
                               project = "17T")
-pbmc_17N.data <- Read10X(data.dir="/data2/zhangmin/10X/171239_20180629/17N/17N/outs/filtered_gene_bc_matrices/hg19")
+pbmc_17N.data <- Read10X(data.dir="")
 colnames(x = pbmc_17N.data) <- paste('17N', colnames(x = pbmc_17N.data), sep = '_')
 pbmc_17N <- CreateSeuratObject(raw.data = pbmc_17N.data, 
                                min.cells = 10, min.genes = 500, 
@@ -26,12 +26,12 @@ pbmc_17N <- CreateSeuratObject(raw.data = pbmc_17N.data,
 
 
 ####18
-pbmc_18T.data <- Read10X(data.dir="/data2/zhangmin/10X/171239_20180629/18T/18T/outs/filtered_gene_bc_matrices/hg19")
+pbmc_18T.data <- Read10X(data.dir="")
 colnames(x = pbmc_18T.data) <- paste('18T', colnames(x = pbmc_18T.data), sep = '_')
 pbmc_18T<- CreateSeuratObject(raw.data = pbmc_18T.data, 
                               min.cells = 10, min.genes = 500, 
                               project = "18T")
-pbmc_18N.data <- Read10X(data.dir="/data2/zhangmin/10X/171239_20180629/18N/18N/outs/filtered_gene_bc_matrices/hg19")
+pbmc_18N.data <- Read10X(data.dir="")
 colnames(x = pbmc_18N.data) <- paste('18N', colnames(x = pbmc_18N.data), sep = '_')
 pbmc_18N <- CreateSeuratObject(raw.data = pbmc_18N.data, 
                                min.cells = 10, min.genes = 500, 
@@ -94,13 +94,13 @@ pbmc <- AlignSubspace(pbmc, reduction.type = "cca", grouping.var = "orig.ident",
 
 
 
-### from  HeJian  Smart-Seq
+### from  HeJ  Smart-Seq
 options(stringsAsFactors = F)
-setwd("D:/data/bzj2018human 小胚数据/CS10_16/")
+setwd("")
 rm(list = ls())
 
-load("D:/data/human HSC analysis//human HSC/bzj20180427/cellcyclegenes.RData")
-load("D:/data/human HSC analysis//human HSC/bzj20180427/labcolors.RData")
+load("/cellcyclegenes.RData")
+load("D:/labcolors.RData")
 
 #####
 # data_umi <- cbind(data_raw0330, data_raw0411, data_raw170228, data_raw170324, data_raw20180625, data_raw160707, data_raw170421)
@@ -108,7 +108,7 @@ load("D:/data/human HSC analysis//human HSC/bzj20180427/labcolors.RData")
 #                     data_annot170228[, c("stage", "location")], data_annot170324[, c("stage", "location")],
 #                     data_annot20180625[, c("stage", "location")], data_annot160707[, c("stage", "location")],
 #                     data_annnot170421[, c("stage", "location")])
-# save(data_umi, data_annot, file = "D:/data/bzj2018human 小胚数据/CS10_16/CS10_16_Rawdata_Annotation.RData")
+# save(data_umi, data_annot, file = "")
 
 load(file = "CS10_16_Rawdata_Annotation.RData")
 load(file = "CS10_16_annot.RData")
@@ -201,7 +201,7 @@ seu.cca <- RunTSNE(seu.cca, reduction.use = "cca.aligned", dims.use = 1:15)
 DimPlot(seu.cca,  pt.size = 2, dim.1 = 1, dim.2 = 2, reduction.use = "tsne", cols.use = pal_dolphin, 
         do.return = T, group.by = "stage")
 
-source(file = "D:/data/bzj2018human 小胚数据/seurat_utils.R")
+source(file = "/seurat_utils.R")
 myFeaturePlot(seu.cca, features.plot = c("PROCR","CD44","KIT","ETV2","PECAM1","CDH5","RUNX1","SOX17","GJA5", "NR2F2","HMMR","G2M.Score"), dr = "tsne", ncol = 4)
 myFeaturePlot(seu.cca, features.plot = c("MEG3", "MALAT1", "TUG1"), dr = "tsne", ncol = 2)
 
