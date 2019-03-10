@@ -14,6 +14,11 @@ color_list$P3 <- c('p00'= '#f857b5', 'pre-PRC' ='#17becf', 'p02' = '#a7d129',
                    'p15' = '#658525','Calb1/Chat-AC' = '#fda403','early-muller' ='#3a0088')
 
 
+##-------------------------color.use---------------------------------------------------------
+Cluster_raw <- c('AC/HC' = '#f36a7b','PR' = '#a6cb12', 'RPC' = '#f857b5', 
+                 'RGC' = '#8f71ff', 'Precursors' = '#13abc4', 'Restricted-RPC' = '#26baee',
+                 'C0' = '#f8b500',)
+
 
 
 
