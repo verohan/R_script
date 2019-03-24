@@ -450,7 +450,7 @@ new.cluster.ids <- c("")
 pbmc@ident <- plyr::mapvalues(x = pbmc@ident, from = current.cluster.ids, to = new.cluster.ids)
 TSNEPlot(object = pbmc, do.label = TRUE, pt.size = ...)
                       
-myFeaturePlot <- function(pbmc, features.plot, nrow = NULL, ncol = NULL, dr = c("tsne","pca","ccscore","avscore","umap"), cc.args = list(th.g1s = 2, th.g2m = 2),...){
+myFeaturePlot <- function(pbmc, features.plot,pt.size, nrow = NULL, ncol = NULL, dr = c("tsne","pca","ccscore","avscore","umap"), cc.args = list(th.g1s = 2, th.g2m = 2),...){
   require(ggplot2)
   require(gridExtra)
   dr <- dr[1]
@@ -484,7 +484,7 @@ myFeaturePlot <- function(pbmc, features.plot, nrow = NULL, ncol = NULL, dr = c(
   }
   col_stage_feature <- c('grey',"#fff0bc","#f05a28")
   ggl <- lapply(features.plot, function(feature){
-    p <- ggplot(ggData) + geom_point(mapping = aes_string(x = xx, y = yy, color = gsub("-",".",feature)), size = 0.2) + 
+    p <- ggplot(ggData) + geom_point(mapping = aes_string(x = xx, y = yy, color = gsub("-",".",feature)), size = pt.size) + 
       scale_color_gradientn(colours = col_stage_feature) + 
       xlab(label = xx) + ylab(label = yy) +
       theme(legend.title = element_blank()) + ggtitle(feature) 
