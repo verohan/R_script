@@ -34,7 +34,7 @@ scenicOptions@inputDatasetInfo$colVars <- "int/colVars.Rds"
 saveRDS(scenicOptions, file="int/scenicOptions.Rds")
 
 #expression(>0)at least 5 cells
-genesLeft_minCells<-rownames(data)[rowMeans(data>0)>5]
+genesLeft_minCells<-rownames(data)[rowSums(data>0)>5]
 
 library(RcisTarget)
 motifRankings <- importRankings(getDatabases(scenicOptions)[[1]]) # either one, they should have the same genes
